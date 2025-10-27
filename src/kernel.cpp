@@ -15,7 +15,6 @@
 #include <vector>
 #include <algorithm>
 
-// Haar-like kernel:
 // K[a,b] = sum_i ( 2^{ g_{i,ab} } - 1 ),
 // where g_{i,ab} = #{ j : X[i,j] <= min(X[a,j], X[b,j]) }.
 extern "C" SEXP kernel_call(SEXP X_) {
