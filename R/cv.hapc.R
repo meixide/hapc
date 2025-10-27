@@ -48,3 +48,4 @@ cv.hapc <- function(X, Y,
 
   res
 }
+
