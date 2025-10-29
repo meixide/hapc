@@ -15,7 +15,7 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
-#include <Eigen/Dense>
+#include <RcppEigen.h>
 
 using Eigen::Map;
 using Eigen::MatrixXd;
