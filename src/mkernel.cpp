@@ -17,7 +17,7 @@
 // K(x, x') = sum_i sum_{s subseteq s_i(x,x'), |s|<=m} 1
 //          = sum_i sum_{k=0}^{min(g,m)} C(g,k)
 // where g = |s_i(x,x')| = #{ j : X[i,j] <= min(x_j, x'_j) }
-extern "C" SEXP mkernel_call(SEXP X_, SEXP m_) {
+extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_) {
     if (TYPEOF(X_) != REALSXP || !Rf_isMatrix(X_))
         Rf_error("X must be a numeric (double) matrix");
     const int n = Rf_nrows(X_);
@@ -86,6 +86,41 @@ extern "C" SEXP mkernel_call(SEXP X_, SEXP m_) {
             if (a != b) K[b + a * n] = s;
         }
     }
+    
+    // Centering if requested: K <- J K J, where J = I - (1/n)11^T
+    if (Rf_asLogical(center_) == TRUE) {
+        // Compute row means
+        std::vector<double> rowmean(n, 0.0);
+        std::vector<double> colmean(n, 0.0);
+        double grand = 0.0;
+
+        for (int a = 0; a < n; ++a) {
+            double rs = 0.0;
+            for (int b = 0; b < n; ++b) {
+                rs += K[a + b * n];
+            }
+            rowmean[a] = rs / n;
+            grand += rs;
+        }
+        grand /= (n * n);
+
+        // col means
+        for (int b = 0; b < n; ++b) {
+            double cs = 0.0;
+            for (int a = 0; a < n; ++a) {
+                cs += K[a + b * n];
+            }
+            colmean[b] = cs / n;
+        }
+
+        // Apply K_{ab} <- K_{ab} - rowmean[a] - colmean[b] + grand
+        for (int a = 0; a < n; ++a) {
+            for (int b = 0; b < n; ++b) {
+                K[a + b * n] = K[a + b * n] - rowmean[a] - colmean[b] + grand;
+            }
+        }
+    }
+
     UNPROTECT(1);
     return K_;
 }

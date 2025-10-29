@@ -23,9 +23,9 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
 // externs you already have
-extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_);
+extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_, SEXP center_);
 extern "C" SEXP ridge_call(SEXP Y_, SEXP X_, SEXP lambda_);
-extern "C" SEXP kernel_cross_call(SEXP Xtr_, SEXP Xte_);
+extern "C" SEXP kernel_cross_call(SEXP Xtr_, SEXP Xte_, SEXP m_, SEXP center_);
 extern "C" SEXP pcghal_call(SEXP Y_, SEXP Xtilde_, SEXP ENn_, SEXP alpha0_,
                              SEXP max_iter_, SEXP tol_, SEXP step_factor_, SEXP verbose_, SEXP crit_);
 
@@ -33,7 +33,7 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
                               SEXP lambdas_, SEXP nfolds_,
                               SEXP max_iter_, SEXP tol_, SEXP step_factor_,
                               SEXP verbose_, SEXP crit_,
-                              SEXP predict_) {
+                              SEXP predict_, SEXP center_) {
   if (!Rf_isReal(X_) || !Rf_isReal(Y_))
     Rf_error("X and Y must be numeric.");
 
@@ -41,7 +41,7 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
   const int p  = Rf_ncols(X_);
   if (Rf_length(Y_) != n) Rf_error("length(Y) must equal nrow(X).");
 
-  const int npc = Rf_isInteger(npc_) ? INTEGER(npc_)[0] : (int)REAL(npc_)[0];
+  int npc = Rf_isInteger(npc_) ? INTEGER(npc_)[0] : (int)REAL(npc_)[0];
   const int K   = Rf_isInteger(nfolds_) ? INTEGER(nfolds_)[0] : (int)REAL(nfolds_)[0];
 
   const int L = Rf_length(lambdas_);
@@ -51,8 +51,25 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
 
   int prot = 0;
 
+  // if center is TRUE, then npc cannot exceed n - 1
+  bool center = true;
+  if (Rf_isLogical(center_)) center = LOGICAL(center_)[0];
+  else Rf_error("center must be logical");
+
+  if (center) {
+      if (npc >= n) {
+          npc = n - 1;
+          Rf_warning("npc reduced to n - 1 due to centering.");
+      }
+  } else {
+      if (npc > n) {
+          npc = n;
+          Rf_warning("npc reduced to n due to no centering.");
+      }
+  } 
+
   // Build design: des = list(H, U, d, V)
-  SEXP des_out = PROTECT(pchal_des(X_, maxdeg_, npc_)); prot++;
+  SEXP des_out = PROTECT(pchal_des(X_, maxdeg_, npc_, center_)); prot++;
   SEXP U_ = VECTOR_ELT(des_out, 1);
   SEXP d_ = VECTOR_ELT(des_out, 2);
   SEXP V_ = VECTOR_ELT(des_out, 3);
@@ -117,10 +134,18 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
       // Inner protect block
       int nprot = 0;
       SEXP Y_in   = PROTECT(Rf_allocVector(REALSXP, ntrain)); nprot++;
+      // first copy Ytrain into Y_in, then compute mean from Ytrain directly
+      std::copy(Ytrain.data(), Ytrain.data() + ntrain, REAL(Y_in));
+      double ymean = Ytrain.mean();
+      // now subtract the mean from Y_in
+      for (int ii = 0; ii < ntrain; ++ii) {
+        REAL(Y_in)[ii] -= ymean;
+      }
+
       SEXP X_in   = PROTECT(Rf_allocMatrix(REALSXP, ntrain, npc)); nprot++;
       SEXP lam_in = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
       REAL(lam_in)[0] = lambda;
-      std::copy(Ytrain.data(), Ytrain.data() + ntrain, REAL(Y_in));
+      // (copy already done above)
       std::copy(Xtrain.data(), Xtrain.data() + ntrain * npc, REAL(X_in));
 
       // alpha0 from ridge
@@ -138,6 +163,11 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
       Map<VectorXd> alpha_hat(REAL(alpha_out), Rf_length(alpha_out));
 
       VectorXd y_pred = Xtest * alpha_hat;
+      // if centering was done, need to add back mean of Ytrain
+      if (center) {
+          double ymean = Ytrain.mean();
+          y_pred.array() += ymean;
+      }
       double mse = (Ytest - y_pred).squaredNorm() / (double)ntest;
       fold_error(i - 1, j) = mse;
 
@@ -167,6 +197,17 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
 
   // Refit on full data at best λ
   SEXP Y_full  = PROTECT(Rf_allocVector(REALSXP, n)); prot++;
+  // save the mean of Y_full
+  Map<const VectorXd> Yfull_map(REAL(Y_), n);
+  double ymean = Yfull_map.mean();
+  // now subtract the mean from Y_full if center=1
+  if (center) {
+      for (int i = 0; i < n; ++i) {
+          REAL(Y_full)[i] = REAL(Y_)[i] - ymean;
+      }
+  } else {
+      std::copy(REAL(Y_), REAL(Y_) + n, REAL(Y_full));
+  }
   SEXP X_full  = PROTECT(Rf_allocMatrix(REALSXP, n, npc)); prot++;
   SEXP lam_full= PROTECT(Rf_allocVector(REALSXP, 1)); prot++;
   REAL(lam_full)[0] = best_lambda;
@@ -190,7 +231,7 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
 
     // ktest = har.kernel.cross(X, predict)
     int nprot_pred = 0;
-    SEXP ktest_sexp = PROTECT(kernel_cross_call(X_, predict_)); nprot_pred++;
+    SEXP ktest_sexp = PROTECT(kernel_cross_call(X_, predict_, maxdeg_, center_)); nprot_pred++;
     Map<const MatrixXd> Ktest(REAL(ktest_sexp), m_pred, n);
 
     // Extract alpha from res_opt (first element of pcghal result)
@@ -210,6 +251,10 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
 
     // predictions = ktest %*% v    -> length m_pred
     VectorXd preds = Ktest * v;
+    // if centering was done, need to add back mean of Y_full
+    if (center) {       
+        preds.array() += ymean;
+    }
 
     // Return as a numeric vector (m_pred)
     predictions_out = PROTECT(Rf_allocVector(REALSXP, m_pred)); nprot_pred++;
