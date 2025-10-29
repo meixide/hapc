@@ -13,7 +13,8 @@ cv.hapc <- function(X, Y,
                     tol=1e-9,
                     step_factor=0.1,
                     verbose=TRUE,
-                    crit="risk") {
+                    crit="risk",
+                    center=TRUE) {
   norm <- match.arg(norm)
 
   # --- ensure numeric types ---
@@ -40,10 +41,10 @@ cv.hapc <- function(X, Y,
         as.integer(max_degree), as.integer(npcs),
         as.numeric(2^seq(log_lambda_min, log_lambda_max, length.out = grid_length)), as.integer(nfolds),
         as.integer(max_iter), as.numeric(tol),
-        as.numeric(step_factor), as.logical(verbose),as.character(crit),matrix(predict,ncol=p),PACKAGE = "hapc")
+        as.numeric(step_factor), as.logical(verbose),as.character(crit),matrix(predict,ncol=p), as.logical(center), PACKAGE = "hapc")
   } else {
     message("L1 norm constraint")
-    res <- .Call("fasthal_cv_call", X, Y, npcs, as.numeric(2^seq(log_lambda_min, log_lambda_max, length.out = grid_length)),nfolds,predict, PACKAGE = "hapc")
+    res <- .Call("fasthal_cv_call", X, Y, npcs, as.numeric(2^seq(log_lambda_min, log_lambda_max, length.out = grid_length)),nfolds,predict, max_degree,as.logical(center), PACKAGE = "hapc")
   }
 
   res

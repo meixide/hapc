@@ -35,7 +35,7 @@ static void comb_recursive(std::vector<int>& cur, int start, int depth, int k, i
     }
 }
 
-extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_) {
+extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_, SEXP center_) {
     if (!Rf_isReal(X_))
         Rf_error("X must be a numeric matrix");
 
@@ -51,6 +51,13 @@ extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_) {
     if (Rf_isInteger(npc_)) npc = INTEGER(npc_)[0];
     else if (Rf_isReal(npc_)) npc = (int)REAL(npc_)[0];
     else Rf_error("npc must be integer/numeric");
+
+    // --- parse center ---
+    bool center = true;
+    if (Rf_isLogical(center_)) center = LOGICAL(center_)[0];
+    else Rf_error("center must be logical");
+
+    
 
     const int n = Rf_nrows(X_);
     const int p = Rf_ncols(X_);
@@ -105,6 +112,24 @@ extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_) {
             col_offset += n; // each combo contributes n columns
         }
     }
+    // make a copy of H before centering
+    SEXP H_copy_ = PROTECT(Rf_allocMatrix(REALSXP, n, q));
+    double* H_copy_ptr = REAL(H_copy_);
+    std::copy(Hptr, Hptr + (size_t)n * (size_t)q, H_copy_ptr);
+
+    // --- center H columns if requested ---
+    if (center) {
+        for (int j = 0; j < q; ++j) {
+            double col_mean = 0.0;
+            for (int i = 0; i < n; ++i) {
+                col_mean += Hptr[i + (size_t)n * j];
+            }
+            col_mean /= n;
+            for (int i = 0; i < n; ++i) {
+                Hptr[i + (size_t)n * j] -= col_mean;
+            }
+        }
+    }                           
 
     // --- thin SVD via Gram matrix: G = H H^T (n x n) ---
     // Map H without copying
@@ -174,7 +199,7 @@ extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_) {
 
     // build named list
     SEXP out = PROTECT(Rf_allocVector(VECSXP, 4));
-    SET_VECTOR_ELT(out, 0, H_);
+    SET_VECTOR_ELT(out, 0, H_copy_);
     SET_VECTOR_ELT(out, 1, U_);
     SET_VECTOR_ELT(out, 2, d_);
     SET_VECTOR_ELT(out, 3, V_);
@@ -186,6 +211,6 @@ extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_) {
     SET_STRING_ELT(names, 3, Rf_mkChar("V"));
     Rf_setAttrib(out, R_NamesSymbol, names);
 
-    UNPROTECT(6); // H_, U_, d_, V_, out, names
+    UNPROTECT(7); // H_, H_copy_, U_, d_, V_, out, names
     return out;
 }

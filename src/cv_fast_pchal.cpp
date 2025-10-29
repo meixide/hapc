@@ -21,17 +21,17 @@ using Eigen::VectorXd;
 using Eigen::SelfAdjointEigenSolver;
 
 extern "C" SEXP fast_pchal_call(SEXP U_, SEXP D2_, SEXP Y_, SEXP lambda_);
-extern "C" SEXP kernel_call(SEXP X_);
-extern "C" SEXP kernel_cross_call(SEXP X_, SEXP X2_);
+extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_);
+extern "C" SEXP kernel_cross_call(SEXP X_, SEXP X2_, SEXP m_, SEXP center_);
 
 extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
-                              SEXP lambdas_, SEXP nfolds_, SEXP predict_) {
+                              SEXP lambdas_, SEXP nfolds_, SEXP predict_, SEXP m_, SEXP center_) {
   if (!Rf_isReal(X_) || !Rf_isReal(Y_))
     Rf_error("X and Y must be numeric.");
   const int n  = Rf_nrows(X_);
   const int p  = Rf_ncols(X_);
   if (Rf_length(Y_) != n) Rf_error("length(Y) must equal nrow(X).");
-  const int npc = Rf_isInteger(npc_) ? INTEGER(npc_)[0] : (int)REAL(npc_)[0];
+  int npc = Rf_isInteger(npc_) ? INTEGER(npc_)[0] : (int)REAL(npc_)[0];
   const int nfolds = Rf_isInteger(nfolds_) ? INTEGER(nfolds_)[0] : (int)REAL(nfolds_)[0];
   const int L = Rf_length(lambdas_);
   if (L <= 0) Rf_error("lambdas must be non-empty.");
@@ -41,8 +41,24 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   
   int prot = 0;
 
+  // if center is TRUE, then npc cannot exceed n - 1
+  bool center = true;
+  if (Rf_isLogical(center_)) center = LOGICAL(center_)[0];
+  else Rf_error("center must be logical");
+  if (center) {
+      if (npc >= n) {
+          npc = n - 1;
+          Rf_warning("npc reduced to n - 1 due to centering.");
+      }
+  } else {
+      if (npc > n) {
+          npc = n;
+          Rf_warning("npc reduced to n due to no centering.");
+      }
+  } 
+
   // Compute kernel matrix K
-  SEXP K_sexp = PROTECT(kernel_call(X_)); prot++;
+  SEXP K_sexp = PROTECT(mkernel_call(X_, m_, center_)); prot++;
   Map<const MatrixXd> K(REAL(K_sexp), n, n);
   Rprintf("Number of arguments received: 6? predict_ is %s\n",
         Rf_isNull(predict_) ? "NULL" : "non-NULL");
@@ -145,7 +161,12 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
         Rf_error("fast_pchal_call must return a numeric vector");
       
       Map<VectorXd> alpha_hat(REAL(beta_out), npc);
-      VectorXd y_pred = Xtest * alpha_hat;
+      VectorXd y_pred = Xtest * alpha_hat; // this is correct, Xtest should be called Xtildetest
+      // if centering was done, need to add back mean of Ytrain
+      if (center) {
+          double ymean = Ytrain.mean();
+          y_pred.array() += ymean;
+      }
       double mse = (Ytest - y_pred).squaredNorm() / (double)ntest;
       fold_error(i - 1, j) = mse;
       
@@ -201,15 +222,20 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
     if (!Rf_isReal(predict_) || Rf_ncols(predict_) != p)
       Rf_error("predict must be a numeric matrix with the same number of columns as X.");
     const int m_pred = Rf_nrows(predict_);
-    SEXP ktest_sexp = PROTECT(kernel_cross_call(X_, predict_)); prot++;
+    SEXP ktest_sexp = PROTECT(kernel_cross_call(X_, predict_, m_, center_)); prot++;
     Map<const MatrixXd> Ktest(REAL(ktest_sexp), m_pred, n);
 
     MatrixXd D2inv_sqrt = D2.head(npc).cwiseSqrt().cwiseInverse().asDiagonal();
     Map<VectorXd> alpha_hat(REAL(res_opt), npc);
     MatrixXd predictions = Ktest * U.leftCols(npc) * D2inv_sqrt * alpha_hat;
+    if (center) {       
+        double ymean = Y.mean();
+        predictions.array() += ymean;
+    }
 
     predictions_out = PROTECT(Rf_allocMatrix(REALSXP, m_pred, 1)); prot++;
     std::copy(predictions.data(), predictions.data() + m_pred, REAL(predictions_out));
+
   }
   
   // Build return list
