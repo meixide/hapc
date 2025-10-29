@@ -12,7 +12,7 @@
 #endif
 
 #include <R_ext/Print.h>
-#include <Eigen/Dense>
+#include <RcppEigen.h>
 #include <vector>
 #include <numeric>
 #include <random>

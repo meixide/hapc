@@ -11,7 +11,7 @@
 #undef max
 #endif
 #include <R_ext/Print.h>
-#include <Eigen/Dense>
+#include <RcppEigen.h>
 #include <cmath>
 #include <vector>
 #include <algorithm>
