@@ -15,6 +15,7 @@ extern SEXP pcghal_call(SEXP, SEXP, SEXP, SEXP,
                              SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP pchal_des(SEXP, SEXP, SEXP, SEXP);
 extern SEXP ridge_call(SEXP, SEXP, SEXP);
+extern SEXP pchar_cv_call(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 
 
 // Registration table
@@ -27,6 +28,7 @@ static const R_CallMethodDef CallEntries[] = {
   {"pcghal_call", (DL_FUNC) &pcghal_call, 9},
   {"pchal_des", (DL_FUNC) &pchal_des, 4},
   {"ridge_call", (DL_FUNC) &ridge_call, 3},
+  {"pchar_cv_call", (DL_FUNC) &pchar_cv_call, 8},
   {NULL, NULL, 0}
 };
 

@@ -7,7 +7,7 @@ cv.hapc <- function(X, Y,
                     log_lambda_max = -3,
                     grid_length=10,
                     nfolds = 5,
-                    norm = c("sv", "1"),
+                    norm = c("sv", "1", "2"),
                     predict = NULL,
                     max_iter=100,
                     tol=1e-9,
@@ -16,6 +16,8 @@ cv.hapc <- function(X, Y,
                     crit="risk",
                     center=TRUE) {
   norm <- match.arg(norm)
+       p=ncol(X)
+
 
   # --- ensure numeric types ---
   if (!is.matrix(X)) X <- as.matrix(X)
@@ -35,16 +37,20 @@ cv.hapc <- function(X, Y,
 
   if (norm == "sv") {
     message("Sectional variation norm constraint")
-     p=ncol(X)
   res=.Call("pchal_cv_call",
         as.matrix(X), as.numeric(Y),
         as.integer(max_degree), as.integer(npcs),
         as.numeric(2^seq(log_lambda_min, log_lambda_max, length.out = grid_length)), as.integer(nfolds),
         as.integer(max_iter), as.numeric(tol),
         as.numeric(step_factor), as.logical(verbose),as.character(crit),matrix(predict,ncol=p), as.logical(center), PACKAGE = "hapc")
-  } else {
+  } else if (norm == "1") {
     message("L1 norm constraint")
     res <- .Call("fasthal_cv_call", X, Y, npcs, as.numeric(2^seq(log_lambda_min, log_lambda_max, length.out = grid_length)),nfolds,predict, max_degree,as.logical(center), PACKAGE = "hapc")
+  } else if (norm == "2") {
+    message("L2 norm constraint")
+    res <- .Call("pchar_cv_call", X, Y, npcs, as.numeric(2^seq(log_lambda_min, log_lambda_max, length.out = grid_length)),nfolds,predict, max_degree,as.logical(center), PACKAGE = "hapc")
+  } else {
+    stop("Unknown norm type")
   }
 
   res

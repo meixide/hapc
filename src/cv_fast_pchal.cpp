@@ -15,6 +15,7 @@
 #include <numeric>
 #include <random>
 #include <algorithm>
+
 using Eigen::Map;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -23,6 +24,41 @@ using Eigen::SelfAdjointEigenSolver;
 extern "C" SEXP fast_pchal_call(SEXP U_, SEXP D2_, SEXP Y_, SEXP lambda_);
 extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_);
 extern "C" SEXP kernel_cross_call(SEXP X_, SEXP X2_, SEXP m_, SEXP center_);
+
+// Simple power iteration for top k eigenvectors
+static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorXd& D) {
+  const int n = A.rows();
+  V.resize(n, k);
+  D.resize(k);
+  
+  MatrixXd A_deflated = A;
+  
+  for (int i = 0; i < k; ++i) {
+    // Random initialization
+    VectorXd v = VectorXd::Random(n);
+    v.normalize();
+    
+    // Power iteration
+    double lambda_old = 0.0;
+    for (int iter = 0; iter < 100; ++iter) {
+      VectorXd v_new = A_deflated * v;
+      double lambda = v_new.norm();
+      v_new.normalize();
+      
+      if (std::abs(lambda - lambda_old) < 1e-6) break;
+      
+      v = v_new;
+      lambda_old = lambda;
+    }
+    
+    // Store eigenvector and eigenvalue
+    V.col(i) = v;
+    D(i) = v.dot(A_deflated * v);
+    
+    // Deflate matrix: A := A - lambda * v * v^T
+    A_deflated -= D(i) * v * v.transpose();
+  }
+}
 
 extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
                               SEXP lambdas_, SEXP nfolds_, SEXP predict_, SEXP m_, SEXP center_) {
@@ -63,17 +99,11 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   Rprintf("Number of arguments received: 6? predict_ is %s\n",
         Rf_isNull(predict_) ? "NULL" : "non-NULL");
 
-  // Diagonalize K: K = U * D * U^T where D is diagonal
-  SelfAdjointEigenSolver<MatrixXd> solver(K);
-  if (solver.info() != Eigen::Success)
-    Rf_error("Kernel matrix eigendecomposition failed.");
+  // Use power iteration for top npc eigenvalues (faster than full decomposition)
+  MatrixXd U(n, npc);
+  VectorXd D2(npc);
   
-  VectorXd eigvals = solver.eigenvalues();
-  MatrixXd eigvecs = solver.eigenvectors();
-  
-  // Reverse order to get descending eigenvalues
-  VectorXd D2 = eigvals.reverse();
-  MatrixXd U = eigvecs.rowwise().reverse();
+  power_iteration_top_k(K, npc, U, D2);
 
   // Print first five elements of D2 and the top-left 5x5 block of U
   Rprintf("First five eigenvalues (D2): ");
@@ -88,10 +118,8 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
       Rprintf("\n");
   }
 
-  
-
-  // Create Xtilde = U[:, 1:npc] * D2[1:npc]^(1/2)
-  MatrixXd Xtilde = U.leftCols(npc) * D2.head(npc).cwiseSqrt().asDiagonal();
+  // Create Xtilde = U * D2^(1/2)
+  MatrixXd Xtilde = U * D2.cwiseSqrt().asDiagonal();
   
   Map<const VectorXd> Y(REAL(Y_), n);
   
@@ -129,12 +157,12 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
       }
       
       // Extract train and test data
-      MatrixXd Xtest(ntest, npc);            // only need Xtest for prediction
-      MatrixXd Utrain(ntrain, npc);          // need eigenvector rows for training
+      MatrixXd Xtest(ntest, npc);
+      MatrixXd Utrain(ntrain, npc);
       VectorXd Ytrain(ntrain), Ytest(ntest);
       
       for (int ii = 0; ii < ntrain; ++ii) {
-        Utrain.row(ii) = U.row(train_idx[ii]).leftCols(npc);
+        Utrain.row(ii) = U.row(train_idx[ii]);
         Ytrain[ii]     = Y[train_idx[ii]];
       }
       for (int ii = 0; ii < ntest; ++ii) {
@@ -156,13 +184,11 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
       
       SEXP beta_out = PROTECT(fast_pchal_call(U_train, D2_train, Y_train, lam_in)); nprot++;
       
-      // Extract predictions - beta has length npc
       if (!Rf_isReal(beta_out))
         Rf_error("fast_pchal_call must return a numeric vector");
       
       Map<VectorXd> alpha_hat(REAL(beta_out), npc);
-      VectorXd y_pred = Xtest * alpha_hat; // this is correct, Xtest should be called Xtildetest
-      // if centering was done, need to add back mean of Ytrain
+      VectorXd y_pred = Xtest * alpha_hat;
       if (center) {
           double ymean = Ytrain.mean();
           y_pred.array() += ymean;
@@ -206,18 +232,15 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   SEXP U_full = PROTECT(Rf_allocMatrix(REALSXP, n, npc)); prot++;
   SEXP D2_full = PROTECT(Rf_allocVector(REALSXP, npc)); prot++;
   SEXP lam_full = PROTECT(Rf_allocVector(REALSXP, 1)); prot++;
-
   
   std::copy(Y.data(), Y.data() + n, REAL(Y_full));
   std::copy(U.data(), U.data() + n * npc, REAL(U_full));
   std::copy(D2.data(), D2.data() + npc, REAL(D2_full));
   REAL(lam_full)[0] = best_lambda;
-
   
   SEXP res_opt = PROTECT(fast_pchal_call(U_full, D2_full, Y_full, lam_full)); prot++;
 
-
-   SEXP predictions_out = R_NilValue;
+  SEXP predictions_out = R_NilValue;
   if (!Rf_isNull(predict_)) {
     if (!Rf_isReal(predict_) || Rf_ncols(predict_) != p)
       Rf_error("predict must be a numeric matrix with the same number of columns as X.");
@@ -225,9 +248,9 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
     SEXP ktest_sexp = PROTECT(kernel_cross_call(X_, predict_, m_, center_)); prot++;
     Map<const MatrixXd> Ktest(REAL(ktest_sexp), m_pred, n);
 
-    MatrixXd D2inv_sqrt = D2.head(npc).cwiseSqrt().cwiseInverse().asDiagonal();
+    MatrixXd D2inv_sqrt = D2.cwiseSqrt().cwiseInverse().asDiagonal();
     Map<VectorXd> alpha_hat(REAL(res_opt), npc);
-    MatrixXd predictions = Ktest * U.leftCols(npc) * D2inv_sqrt * alpha_hat;
+    MatrixXd predictions = Ktest * U * D2inv_sqrt * alpha_hat;
     if (center) {       
         double ymean = Y.mean();
         predictions.array() += ymean;
@@ -235,7 +258,6 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
 
     predictions_out = PROTECT(Rf_allocMatrix(REALSXP, m_pred, 1)); prot++;
     std::copy(predictions.data(), predictions.data() + m_pred, REAL(predictions_out));
-
   }
   
   // Build return list
@@ -249,20 +271,21 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   REAL(best_lambda_out)[0] = best_lambda;
   
   const int n_out = (predictions_out == R_NilValue) ? 4 : 5;
-  SEXP out_final = PROTECT(Rf_allocVector(VECSXP, n_out)); prot++;  SET_VECTOR_ELT(out_final, 0, mses_out);
+  SEXP out_final = PROTECT(Rf_allocVector(VECSXP, n_out)); prot++;
+  SET_VECTOR_ELT(out_final, 0, mses_out);
   SET_VECTOR_ELT(out_final, 1, lambdas_out);
   SET_VECTOR_ELT(out_final, 2, best_lambda_out);
   SET_VECTOR_ELT(out_final, 3, res_opt);
-    if (n_out == 5) {
+  if (n_out == 5) {
     SET_VECTOR_ELT(out_final, 4, predictions_out);
   }
   
   SEXP names = PROTECT(Rf_allocVector(STRSXP, n_out)); prot++;
-SET_STRING_ELT(names, 0, Rf_mkChar("mses"));
+  SET_STRING_ELT(names, 0, Rf_mkChar("mses"));
   SET_STRING_ELT(names, 1, Rf_mkChar("lambdas"));
   SET_STRING_ELT(names, 2, Rf_mkChar("best_lambda"));
   SET_STRING_ELT(names, 3, Rf_mkChar("res_opt"));
-    if (n_out == 5) {
+  if (n_out == 5) {
     SET_STRING_ELT(names, 4, Rf_mkChar("predictions"));
   }
   
