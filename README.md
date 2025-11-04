@@ -36,6 +36,28 @@ devtools::build()       # Build the package
 devtools::check()       # Run package checks and tests
 ```
 
+```r
+# 1. Unload the package completely
+try(detach("package:hapc", unload = TRUE), silent = TRUE)
+
+# 2. Remove the installed package
+remove.packages("hapc")
+
+# 3. Clean build artifacts
+pkgbuild::clean_dll()
+
+# 4. Restart R session (critical!)
+.rs.restartR()
+
+# After restart:
+# 5. Reinstall
+setwd("~/Projects/hapc")
+devtools::install()
+
+# Or load for development
+devtools::load_all()
+```
+
 ## Package Management
 
 To remove or detach the package:
