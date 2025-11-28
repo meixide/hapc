@@ -1,6 +1,6 @@
 #' @export
 
-cv.hapc <- function(X, Y,
+cv.hapc <- function(X, Y,family='gaussian',
                     max_degree = 1,
                     npcs = 100,
                     log_lambda_min = -5,
@@ -18,7 +18,10 @@ cv.hapc <- function(X, Y,
   norm <- match.arg(norm)
        p=ncol(X)
 
-
+  if(family == 'binomial') {
+    message("Binomial family")
+    
+  }
   # --- ensure numeric types ---
   if (!is.matrix(X)) X <- as.matrix(X)
   storage.mode(X) <- "double"
