@@ -3,4 +3,7 @@
 export(cv.hapc)
 export(design.hapc)
 export(kernel.hapc)
+export(cross_kernel.hapc)
+
+
 useDynLib(hapc, .registration = TRUE)
