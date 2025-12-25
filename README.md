@@ -28,6 +28,8 @@ library(hapc)
 
 ## Useful Development Commands
 
+If roxygen does not automatically do it, manually add export() to NAMESPACE when a new function is created. 
+
 During development, the following commands are helpful for maintaining and testing the package:
 
 ```r
