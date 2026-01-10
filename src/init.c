@@ -19,6 +19,10 @@ extern SEXP pchar_cv_call(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP pcghal_classi_call(SEXP, SEXP, SEXP, SEXP,
                                     SEXP, SEXP, SEXP, 
                                     SEXP);
+extern SEXP single_pcghal_call(SEXP, SEXP, SEXP, SEXP,
+                                    SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP single_lambda_pchar(SEXP, SEXP, SEXP, 
+                                    SEXP, SEXP, SEXP, SEXP, SEXP);                                    
 
 
 
@@ -34,6 +38,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"ridge_call", (DL_FUNC) &ridge_call, 3},
   {"pchar_cv_call", (DL_FUNC) &pchar_cv_call, 8},
   {"pcghal_classi_call", (DL_FUNC) &pcghal_classi_call, 8},
+  {"single_pcghal_call", (DL_FUNC) &single_pcghal_call, 12},
+  {"single_lambda_pchar", (DL_FUNC) &single_lambda_pchar, 8},
   {NULL, NULL, 0}
 };
 

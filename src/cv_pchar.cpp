@@ -23,7 +23,9 @@ using Eigen::SelfAdjointEigenSolver;
 
 extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_);
 extern "C" SEXP kernel_cross_call(SEXP X_, SEXP X2_, SEXP m_, SEXP center_);
-extern "C" SEXP ridge_call(SEXP Y_, SEXP X_, SEXP lambda_);
+
+// UPDATED: ridge_call now takes 4 arguments (Y, U, D2, lambda)
+extern "C" SEXP ridge_call(SEXP Y_, SEXP U_, SEXP D2_, SEXP lambda_);
 
 // Simple power iteration for top k eigenvectors
 static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorXd& D) {
@@ -118,7 +120,7 @@ extern "C" SEXP pchar_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
       Rprintf("\n");
   }
 
-  // Create Xtilde = U * D2^(1/2)
+  // Create Xtilde = U * D2^(1/2) for TEST set error calculation (prediction step)
   MatrixXd Xtilde = U * D2.cwiseSqrt().asDiagonal();
   
   Map<const VectorXd> Y(REAL(Y_), n);
@@ -170,7 +172,7 @@ extern "C" SEXP pchar_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
         Ytest[ii]     = Y[test_idx[ii]];
       }
       
-      // Prepare inputs for fast_pchal_call
+      // Prepare inputs for ridge_call
       int nprot = 0;
       SEXP Y_train = PROTECT(Rf_allocVector(REALSXP, ntrain)); nprot++;
       SEXP U_train = PROTECT(Rf_allocMatrix(REALSXP, ntrain, npc)); nprot++;
@@ -181,16 +183,12 @@ extern "C" SEXP pchar_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
       std::copy(Utrain.data(), Utrain.data() + ntrain * npc, REAL(U_train));
       std::copy(D2.data(), D2.data() + npc, REAL(D2_train));
       REAL(lam_in)[0] = lambda;
-      // build X_train as U_train * D2_train^(1/2)
-Map<const VectorXd> D2_train_vec(REAL(D2_train), npc);
-MatrixXd X_train = Map<MatrixXd>(REAL(U_train), ntrain, npc) *
-                   D2_train_vec.cwiseSqrt().asDiagonal();      
-SEXP X_train_sexp = PROTECT(Rf_allocMatrix(REALSXP, ntrain, npc)); nprot++;
-std::copy(X_train.data(), X_train.data() + ntrain * npc, REAL(X_train_sexp));
-
-SEXP beta_out = PROTECT(ridge_call(Y_train, X_train_sexp, lam_in)); nprot++;      
+      
+      // UPDATED: Pass Y, U, D2, and lambda directly
+      SEXP beta_out = PROTECT(ridge_call(Y_train, U_train, D2_train, lam_in)); nprot++;      
+      
       if (!Rf_isReal(beta_out))
-        Rf_error("fast_pchal_call must return a numeric vector");
+        Rf_error("ridge_call must return a numeric vector");
       
       Map<VectorXd> alpha_hat(REAL(beta_out), npc);
       VectorXd y_pred = Xtest * alpha_hat;
@@ -242,15 +240,10 @@ SEXP beta_out = PROTECT(ridge_call(Y_train, X_train_sexp, lam_in)); nprot++;
   std::copy(U.data(), U.data() + n * npc, REAL(U_full));
   std::copy(D2.data(), D2.data() + npc, REAL(D2_full));
   REAL(lam_full)[0] = best_lambda;
-  // build X_full as U_full * D2_full^(1/2)
-  Map<const VectorXd> D2_full_vec(REAL(D2_full), npc);
-    MatrixXd X_full = Map<MatrixXd>(REAL(U_full), n, npc) *
-                  D2_full_vec.cwiseSqrt().asDiagonal();
 
-SEXP X_full_sexp = PROTECT(Rf_allocMatrix(REALSXP, n, npc)); prot++;
-std::copy(X_full.data(), X_full.data() + n * npc, REAL(X_full_sexp));
+  // UPDATED: Pass Y, U, D2, and lambda directly for refit
+  SEXP res_opt = PROTECT(ridge_call(Y_full, U_full, D2_full, lam_full)); prot++;
 
-SEXP res_opt = PROTECT(ridge_call(Y_full, X_full_sexp, lam_full)); prot++;
   SEXP predictions_out = R_NilValue;
   if (!Rf_isNull(predict_)) {
     if (!Rf_isReal(predict_) || Rf_ncols(predict_) != p)
