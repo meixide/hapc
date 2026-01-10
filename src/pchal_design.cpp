@@ -38,6 +38,8 @@ static void comb_recursive(std::vector<int>& cur, int start, int depth, int k, i
 extern "C" SEXP pchal_des(SEXP X_, SEXP maxdeg_, SEXP npc_, SEXP center_) {
     if (!Rf_isReal(X_))
         Rf_error("X must be a numeric matrix");
+    
+
 
     // --- parse max_degree ---
     int maxdeg;
