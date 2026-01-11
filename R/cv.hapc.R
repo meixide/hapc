@@ -15,7 +15,8 @@ cv.hapc <- function(X, Y,family='gaussian',
                     verbose=TRUE,
                     crit="risk",
                     center=TRUE,
-                    approx=FALSE) {
+                    approx=FALSE,
+                    single_lambda = NULL) {
   norm <- match.arg(norm)
        p=ncol(X)
 
@@ -34,26 +35,38 @@ cv.hapc <- function(X, Y,family='gaussian',
   log_lambda_min <- as.numeric(log_lambda_min)
   log_lambda_max <- as.numeric(log_lambda_max)
   nfolds <- as.numeric(nfolds)
-    predict <- matrix(predict,ncol=p)
-    print(dim(predict))
-    p=ncol(X)
-
+  predict <- matrix(predict, ncol=p)
+  print(dim(predict))
+  p <- ncol(X)
 
   if (norm == "sv") {
     message("Sectional variation norm constraint")
-  res=.Call("pchal_cv_call",
-        as.matrix(X), as.numeric(Y),
-        as.integer(max_degree), as.integer(npcs),
-        as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))), as.integer(nfolds),
-        as.integer(max_iter), as.numeric(tol),
-        as.numeric(step_factor), as.logical(verbose),as.character(crit),matrix(predict,ncol=p), as.logical(center), PACKAGE = "hapc")
+    
+    if (family == "gaussian") {
+      res <- .Call("pchal_cv_call",
+            as.matrix(X), as.numeric(Y),
+            as.integer(max_degree), as.integer(npcs),
+            as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))), as.integer(nfolds),
+            as.integer(max_iter), as.numeric(tol),
+            as.numeric(step_factor), as.logical(verbose), as.character(crit),
+            matrix(predict, ncol=p), as.logical(center), PACKAGE = "hapc")
+    } else if (family == "binomial") {
+      res <- .Call("pchal_cv_classi_call",
+            as.matrix(X), as.numeric(Y),
+            as.integer(max_degree), as.integer(npcs),
+            as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))), as.integer(nfolds),
+            as.integer(max_iter), as.numeric(tol),
+            as.numeric(step_factor), as.logical(verbose), as.character(crit),
+            matrix(predict, ncol=p), as.logical(center), NULL, PACKAGE = "hapc")
+    } else {
+      stop("Unknown family type")
+    }
   } else if (norm == "1") {
     message("L1 norm constraint")
-    res <- .Call("fasthal_cv_call", X, Y, npcs, as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))),nfolds,predict, max_degree,as.logical(center),as.logical(approx),as.logical(1), PACKAGE = "hapc")
+    res <- .Call("fasthal_cv_call", X, Y, npcs, as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))), nfolds, predict, max_degree, as.logical(center), as.logical(approx), as.logical(1), PACKAGE = "hapc")
   } else if (norm == "2") {
     message("L2 norm constraint")
-  res <- .Call("fasthal_cv_call", X, Y, npcs, as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))),nfolds,predict, max_degree,as.logical(center), as.logical(approx), as.logical(0),PACKAGE = "hapc")
-
+    res <- .Call("fasthal_cv_call", X, Y, npcs, as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))), nfolds, predict, max_degree, as.logical(center), as.logical(approx), as.logical(0), PACKAGE = "hapc")
   } else {
     stop("Unknown norm type")
   }

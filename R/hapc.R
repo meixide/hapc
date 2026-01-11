@@ -101,14 +101,10 @@ hapc <- function(X, Y, family='gaussian',
                     verbose=TRUE,
                     crit="risk",
                     center=TRUE,
-                    approx=FALSE) {
+                    approx=FALSE,single_lambda= NULL) {
   norm <- match.arg(norm)
-       p=ncol(X)
+  p <- ncol(X)
 
-  if(family == 'binomial') {
-    message("Binomial family")
-    
-  }
   # --- ensure numeric types ---
   if (!is.matrix(X)) X <- as.matrix(X)
   storage.mode(X) <- "double"
@@ -117,35 +113,47 @@ hapc <- function(X, Y, family='gaussian',
   # ensure numeric scalars too
   max_degree <- as.numeric(max_degree)
   npcs <- as.numeric(npcs)
-    predict <- matrix(predict,ncol=p)
-    print(dim(predict))
-    p=ncol(X)
+  predict <- matrix(predict, ncol=p)
+  print(dim(predict))
 
+  if (family == 'binomial') {
+    message("Binomial family")
+    
+    res <- .Call("pchal_cv_classi_call",
+          as.matrix(X), as.numeric(Y),
+          as.integer(max_degree), as.integer(npcs),
+          as.numeric(lambda), as.integer(1),
+          as.integer(max_iter), as.numeric(tol),
+          as.numeric(step_factor), as.logical(verbose), as.character(crit),
+          matrix(predict, ncol=p), as.logical(center), as.numeric(lambda), PACKAGE = "hapc")
+    
+    return(res)
+  }
 
   if (norm == "sv") {
     message("Sectional variation norm constraint")
-  res=.Call("single_pcghal_call",
-        as.matrix(X), as.numeric(Y),
-        as.integer(max_degree), as.integer(npcs),
-        as.double(lambda), 
-        as.integer(max_iter), as.numeric(tol),
-        as.numeric(step_factor), as.logical(verbose),as.character(crit),matrix(predict,ncol=p), as.logical(center), PACKAGE = "hapc")
+    res <- .Call("single_pcghal_call",
+          as.matrix(X), as.numeric(Y),
+          as.integer(max_degree), as.integer(npcs),
+          as.double(lambda), 
+          as.integer(max_iter), as.numeric(tol),
+          as.numeric(step_factor), as.logical(verbose), as.character(crit),
+          matrix(predict, ncol=p), as.logical(center), PACKAGE = "hapc")
   } else if (norm == "2") {
     message(paste0("L", norm, " norm constraint"))
-    res=.Call("single_lambda_pchar",
+    res <- .Call("single_lambda_pchar",
           as.matrix(X), as.numeric(Y),
-           as.integer(npcs),
-          as.double(lambda), matrix(predict,ncol=p),as.integer(max_degree),
-          as.logical(center), as.logical(approx), as.logical(0),PACKAGE = "hapc")
+          as.integer(npcs),
+          as.double(lambda), matrix(predict, ncol=p), as.integer(max_degree),
+          as.logical(center), as.logical(approx), as.logical(0), PACKAGE = "hapc")
   } else if (norm == "1") {
     message(paste0("L", norm, " norm constraint"))
-    res=.Call("single_lambda_pchar",
+    res <- .Call("single_lambda_pchar",
           as.matrix(X), as.numeric(Y),
-           as.integer(npcs),
-          as.double(lambda), matrix(predict,ncol=p),as.integer(max_degree),
-          as.logical(center), as.logical(approx), as.logical(1),PACKAGE = "hapc")
-  }
-  else {
+          as.integer(npcs),
+          as.double(lambda), matrix(predict, ncol=p), as.integer(max_degree),
+          as.logical(center), as.logical(approx), as.logical(1), PACKAGE = "hapc")
+  } else {
     stop("Unknown norm type, try the cv routine")
   }
 
