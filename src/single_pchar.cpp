@@ -20,11 +20,11 @@ using Eigen::Map;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
+// External declarations
 extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_);
 extern "C" SEXP kernel_cross_call(SEXP X_, SEXP X2_, SEXP m_, SEXP center_);
-
-// UPDATED: ridge_call now takes 4 arguments (Y, U, D2, lambda)
 extern "C" SEXP ridge_call(SEXP Y_, SEXP U_, SEXP D2_, SEXP lambda_);
+extern "C" SEXP fast_pchal_call(SEXP U_, SEXP D2_, SEXP Y_, SEXP lambda_);
 
 // Simple power iteration for top k eigenvectors
 static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorXd& D) {
@@ -62,10 +62,10 @@ static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorX
 }
 
 // --------------------------------------------------------
-// NEW FUNCTION: single_lambda_pchar
+// FUNCTION: single_lambda_pchar
 // --------------------------------------------------------
 extern "C" SEXP single_lambda_pchar(SEXP X_, SEXP Y_, SEXP npc_, 
-                                    SEXP lambda_, SEXP predict_, SEXP m_, SEXP center_, SEXP approx_) {
+                                    SEXP lambda_, SEXP predict_, SEXP m_, SEXP center_, SEXP approx_, SEXP l1_) {
   if (!Rf_isReal(X_) || !Rf_isReal(Y_))
     Rf_error("X and Y must be numeric.");
     
@@ -84,6 +84,11 @@ extern "C" SEXP single_lambda_pchar(SEXP X_, SEXP Y_, SEXP npc_,
   bool approx = false;
   if (Rf_isLogical(approx_)) approx = LOGICAL(approx_)[0];
   else Rf_error("approx must be logical");
+  
+  // L1 penalty flag
+  bool l1 = false;
+  if (Rf_isLogical(l1_)) l1 = LOGICAL(l1_)[0];
+  else Rf_error("l1 must be logical");
   
   if (center) {
       if (npc >= n) { npc = n - 1; Rf_warning("npc reduced to n - 1 due to centering."); }
@@ -122,15 +127,42 @@ extern "C" SEXP single_lambda_pchar(SEXP X_, SEXP Y_, SEXP npc_,
     }
   }
 
-  // Prepare data for ridge_call (full dataset)
+  // Prepare data for solvers
   SEXP U_sexp = PROTECT(Rf_allocMatrix(REALSXP, n, npc)); prot++;
   SEXP D2_sexp = PROTECT(Rf_allocVector(REALSXP, npc)); prot++;
   
   std::copy(U.data(), U.data() + n * npc, REAL(U_sexp));
   std::copy(D2.data(), D2.data() + npc, REAL(D2_sexp));
+
+  // --- FIX: Handle Centering Logic ---
+  SEXP Y_target;
+  double ymean = 0.0;
   
-  // Call ridge_call directly
-  SEXP res_opt = PROTECT(ridge_call(Y_, U_sexp, D2_sexp, lambda_)); prot++;
+  if (center) {
+      // Calculate mean
+      Map<const VectorXd> Y_raw(REAL(Y_), n);
+      ymean = Y_raw.mean();
+      
+      // Create centered copy for the solver
+      SEXP Y_centered = PROTECT(Rf_allocVector(REALSXP, n)); prot++;
+      VectorXd Y_centered_vec = Y_raw.array() - ymean;
+      std::copy(Y_centered_vec.data(), Y_centered_vec.data() + n, REAL(Y_centered));
+      Y_target = Y_centered;
+  } else {
+      // Use raw Y if no centering requested
+      Y_target = Y_;
+  }
+  // -----------------------------------
+  
+  // Call appropriate solver based on l1 flag
+  SEXP res_opt;
+  if (l1) {
+    Rprintf("Using L1 penalty (LASSO)\n");
+    res_opt = PROTECT(fast_pchal_call(U_sexp, D2_sexp, Y_target, lambda_)); prot++;
+  } else {
+    Rprintf("Using L2 penalty (Ridge)\n");
+    res_opt = PROTECT(ridge_call(Y_target, U_sexp, D2_sexp, lambda_)); prot++;
+  }
 
   // Predictions (if needed)
   SEXP predictions_out = R_NilValue;
@@ -147,9 +179,8 @@ extern "C" SEXP single_lambda_pchar(SEXP X_, SEXP Y_, SEXP npc_,
       
       MatrixXd predictions = Ktest * U * D2inv_sqrt * alpha_hat;
       
+      // Add mean back (Conditionally)
       if (center) {
-          Map<const VectorXd> Y_vec(REAL(Y_), n);
-          double ymean = Y_vec.mean();
           predictions.array() += ymean;
       }
       
