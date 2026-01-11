@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <cmath>
 
-// Modified Haar-like kernel limited to subsets up to size m:
+// Modified kernel limited to subsets up to size m:
 // K(x, x') = sum_i sum_{s subseteq s_i(x,x'), |s|<=m} 1
 //          = sum_i sum_{k=0}^{min(g,m)} C(g,k)
 // where g = |s_i(x,x')| = #{ j : X[i,j] <= min(x_j, x'_j) }
