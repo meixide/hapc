@@ -136,7 +136,14 @@ hapc <- function(X, Y, family='gaussian',
           as.matrix(X), as.numeric(Y),
            as.integer(npcs),
           as.double(lambda), matrix(predict,ncol=p),as.integer(max_degree),
-          as.logical(center), as.logical(approx), PACKAGE = "hapc")
+          as.logical(center), as.logical(approx), as.logical(0),PACKAGE = "hapc")
+  } else if (norm == "1") {
+    message(paste0("L", norm, " norm constraint"))
+    res=.Call("single_lambda_pchar",
+          as.matrix(X), as.numeric(Y),
+           as.integer(npcs),
+          as.double(lambda), matrix(predict,ncol=p),as.integer(max_degree),
+          as.logical(center), as.logical(approx), as.logical(1),PACKAGE = "hapc")
   }
   else {
     stop("Unknown norm type, try the cv routine")

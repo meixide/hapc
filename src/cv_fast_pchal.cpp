@@ -19,9 +19,10 @@
 using Eigen::Map;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-using Eigen::SelfAdjointEigenSolver;
 
+// External function declarations
 extern "C" SEXP fast_pchal_call(SEXP U_, SEXP D2_, SEXP Y_, SEXP lambda_);
+extern "C" SEXP ridge_call(SEXP Y_, SEXP U_, SEXP D2_, SEXP lambda_);
 extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_);
 extern "C" SEXP kernel_cross_call(SEXP X_, SEXP X2_, SEXP m_, SEXP center_);
 
@@ -45,7 +46,7 @@ static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorX
       double lambda = v_new.norm();
       v_new.normalize();
       
-      if (std::abs(lambda - lambda_old) < 1e-6) break;
+      if (std::abs(lambda - lambda_old) < 1e-9) break;
       
       v = v_new;
       lambda_old = lambda;
@@ -61,7 +62,8 @@ static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorX
 }
 
 extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
-                              SEXP lambdas_, SEXP nfolds_, SEXP predict_, SEXP m_, SEXP center_) {
+                              SEXP lambdas_, SEXP nfolds_, SEXP predict_, SEXP m_, SEXP center_, SEXP approx_, SEXP l1_) {
+  // 1. Input Validation
   if (!Rf_isReal(X_) || !Rf_isReal(Y_))
     Rf_error("X and Y must be numeric.");
   const int n  = Rf_nrows(X_);
@@ -77,10 +79,20 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   
   int prot = 0;
 
-  // if center is TRUE, then npc cannot exceed n - 1
+  // 2. Boolean Flag Logic
   bool center = true;
   if (Rf_isLogical(center_)) center = LOGICAL(center_)[0];
   else Rf_error("center must be logical");
+  
+  bool approx = false;
+  if (Rf_isLogical(approx_)) approx = LOGICAL(approx_)[0];
+  else Rf_error("approx must be logical");
+  
+  bool l1 = false;
+  if (Rf_isLogical(l1_)) l1 = LOGICAL(l1_)[0];
+  else Rf_error("l1 must be logical");
+  
+  // Adjust npc based on centering
   if (center) {
       if (npc >= n) {
           npc = n - 1;
@@ -93,29 +105,31 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
       }
   } 
 
-  // Compute kernel matrix K
+  // 3. Compute Kernel and Eigen Decomposition
   SEXP K_sexp = PROTECT(mkernel_call(X_, m_, center_)); prot++;
   Map<const MatrixXd> K(REAL(K_sexp), n, n);
-  Rprintf("Number of arguments received: 6? predict_ is %s\n",
-        Rf_isNull(predict_) ? "NULL" : "non-NULL");
 
-  // Use power iteration for top npc eigenvalues (faster than full decomposition)
   MatrixXd U(n, npc);
   VectorXd D2(npc);
   
-  power_iteration_top_k(K, npc, U, D2);
-
-  // Print first five elements of D2 and the top-left 5x5 block of U
-  Rprintf("First five eigenvalues (D2): ");
-  for (int i = 0; i < std::min(5, (int)D2.size()); ++i) {
-      Rprintf("%f ", D2[i]);
-  }
-  Rprintf("\nFirst 5x5 block of U:\n");
-  for (int i = 0; i < std::min(5, (int)U.rows()); ++i) {
-      for (int j = 0; j < std::min(5, (int)U.cols()); ++j) {
-          Rprintf("%f ", U(i, j));
-      }
-      Rprintf("\n");
+  if (approx) {
+    Rprintf("Using approximate eigendecomposition (power iteration)\n");
+    power_iteration_top_k(K, npc, U, D2);
+  } else {
+    Rprintf("Using exact eigendecomposition\n");
+    Eigen::SelfAdjointEigenSolver<MatrixXd> eigensolver(K);
+    if (eigensolver.info() != Eigen::Success) {
+      Rf_error("Eigendecomposition failed");
+    }
+    VectorXd eigenvalues = eigensolver.eigenvalues();
+    MatrixXd eigenvectors = eigensolver.eigenvectors();
+    
+    // Sort descending
+    for (int i = 0; i < npc; ++i) {
+      int idx = n - 1 - i;
+      D2(i) = eigenvalues(idx);
+      U.col(i) = eigenvectors.col(idx);
+    }
   }
 
   // Create Xtilde = U * D2^(1/2)
@@ -123,7 +137,7 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   
   Map<const VectorXd> Y(REAL(Y_), n);
   
-  // Create folds
+  // 4. Create Folds
   std::vector<int> folds(n);
   const int fold_size = n / nfolds;
   for (int i = 0; i < n; ++i) {
@@ -137,6 +151,7 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   
   MatrixXd fold_error = MatrixXd::Constant(nfolds, L, std::numeric_limits<double>::quiet_NaN());
   
+  // 5. Cross Validation Loop
   for (int j = 0; j < L; ++j) {
     const double lambda = lambdas[j];
     for (int i = 1; i <= nfolds; ++i) {
@@ -156,7 +171,6 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
         continue; 
       }
       
-      // Extract train and test data
       MatrixXd Xtest(ntest, npc);
       MatrixXd Utrain(ntrain, npc);
       VectorXd Ytrain(ntrain), Ytest(ntest);
@@ -170,7 +184,14 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
         Ytest[ii]     = Y[test_idx[ii]];
       }
       
-      // Prepare inputs for fast_pchal_call
+      // Compute mean and center Ytrain (Conditionally)
+      double ymean = 0.0;
+      if (center) {
+          ymean = Ytrain.mean();
+          Ytrain.array() -= ymean;
+      }
+      
+      // Prepare inputs for solver
       int nprot = 0;
       SEXP Y_train = PROTECT(Rf_allocVector(REALSXP, ntrain)); nprot++;
       SEXP U_train = PROTECT(Rf_allocMatrix(REALSXP, ntrain, npc)); nprot++;
@@ -182,17 +203,24 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
       std::copy(D2.data(), D2.data() + npc, REAL(D2_train));
       REAL(lam_in)[0] = lambda;
       
-      SEXP beta_out = PROTECT(fast_pchal_call(U_train, D2_train, Y_train, lam_in)); nprot++;
+      SEXP beta_out;
+      if (l1) {
+        beta_out = PROTECT(fast_pchal_call(U_train, D2_train, Y_train, lam_in)); nprot++;
+      } else {
+        beta_out = PROTECT(ridge_call(Y_train, U_train, D2_train, lam_in)); nprot++;
+      }
       
       if (!Rf_isReal(beta_out))
-        Rf_error("fast_pchal_call must return a numeric vector");
+        Rf_error("Solver must return a numeric vector");
       
       Map<VectorXd> alpha_hat(REAL(beta_out), npc);
       VectorXd y_pred = Xtest * alpha_hat;
+      
+      // Add mean back (Conditionally)
       if (center) {
-          double ymean = Ytrain.mean();
           y_pred.array() += ymean;
       }
+      
       double mse = (Ytest - y_pred).squaredNorm() / (double)ntest;
       fold_error(i - 1, j) = mse;
       
@@ -200,7 +228,7 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
     }
   }
   
-  // Compute mean CV error per lambda
+  // 6. Select Best Lambda
   VectorXd mses(L);
   for (int j = 0; j < L; ++j) {
     double sum = 0.0; 
@@ -215,7 +243,6 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
     mses[j] = (cnt > 0) ? (sum / cnt) : NA_REAL;
   }
   
-  // Find best lambda
   int best_idx = 0;
   double best_val = mses[0];
   for (int j = 1; j < L; ++j) {
@@ -227,19 +254,38 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   }
   const double best_lambda = lambdas[best_idx];
   
-  // Refit on full data with best lambda
+  // 7. Refit on Full Data
   SEXP Y_full = PROTECT(Rf_allocVector(REALSXP, n)); prot++;
   SEXP U_full = PROTECT(Rf_allocMatrix(REALSXP, n, npc)); prot++;
   SEXP D2_full = PROTECT(Rf_allocVector(REALSXP, npc)); prot++;
   SEXP lam_full = PROTECT(Rf_allocVector(REALSXP, 1)); prot++;
   
-  std::copy(Y.data(), Y.data() + n, REAL(Y_full));
+  // Handle Centering for Full Data
+  double ymean_full = 0.0;
+  if (center) {
+      ymean_full = Y.mean();
+      VectorXd Y_centered = Y.array() - ymean_full;
+      std::copy(Y_centered.data(), Y_centered.data() + n, REAL(Y_full));
+  } else {
+      std::copy(Y.data(), Y.data() + n, REAL(Y_full));
+  }
+  
   std::copy(U.data(), U.data() + n * npc, REAL(U_full));
   std::copy(D2.data(), D2.data() + npc, REAL(D2_full));
   REAL(lam_full)[0] = best_lambda;
   
-  SEXP res_opt = PROTECT(fast_pchal_call(U_full, D2_full, Y_full, lam_full)); prot++;
+  SEXP res_opt;
+  if (l1) {
+    Rprintf("Using L1 penalty (LASSO)\n");
+    Rprintf("Using new cv\n");
+    res_opt = PROTECT(fast_pchal_call(U_full, D2_full, Y_full, lam_full)); prot++;
+  } else {
+    Rprintf("Using L2 penalty (Ridge)\n");
+    Rprintf("Using new cv\n");
+    res_opt = PROTECT(ridge_call(Y_full, U_full, D2_full, lam_full)); prot++;
+  }
 
+  // 8. Final Prediction (Optional)
   SEXP predictions_out = R_NilValue;
   if (!Rf_isNull(predict_)) {
     if (!Rf_isReal(predict_) || Rf_ncols(predict_) != p)
@@ -251,16 +297,17 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
     MatrixXd D2inv_sqrt = D2.cwiseSqrt().cwiseInverse().asDiagonal();
     Map<VectorXd> alpha_hat(REAL(res_opt), npc);
     MatrixXd predictions = Ktest * U * D2inv_sqrt * alpha_hat;
+    
+    // Add mean back (Conditionally)
     if (center) {       
-        double ymean = Y.mean();
-        predictions.array() += ymean;
+        predictions.array() += ymean_full;
     }
 
     predictions_out = PROTECT(Rf_allocMatrix(REALSXP, m_pred, 1)); prot++;
     std::copy(predictions.data(), predictions.data() + m_pred, REAL(predictions_out));
   }
   
-  // Build return list
+  // 9. Build Return Object
   SEXP mses_out = PROTECT(Rf_allocVector(REALSXP, L)); prot++;
   for (int j = 0; j < L; ++j) REAL(mses_out)[j] = mses[j];
   
