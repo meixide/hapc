@@ -1,2 +1,4 @@
 CXX_STD = CXX17
-# PKG_LIBS = -lR
+PKG_CXXFLAGS = -std=c++17 -I../src
+SOURCES = r_bindings.cpp pchal_design.cpp ridge_wrappers.cpp mkernel.cpp cross_kernel.cpp pcghal_call.cpp pcghal_classi_call.cpp fast_pchal.cpp single_pchar.cpp cv_fast_pchal.cpp pcghal_cv.cpp
+OBJECTS = $(SOURCES:.cpp=.o)

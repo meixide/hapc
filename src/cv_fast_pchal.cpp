@@ -1,5 +1,6 @@
 #define R_NO_REMAP
 #include <Rinternals.h>
+
 #ifdef length
 #undef length
 #endif
@@ -9,16 +10,19 @@
 #ifdef max
 #undef max
 #endif
+
 #include <R_ext/Print.h>
+#include "hapc_core.hpp"
+
+using Eigen::Map;
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+
 #include <RcppEigen.h>
 #include <vector>
 #include <numeric>
 #include <random>
 #include <algorithm>
-
-using Eigen::Map;
-using Eigen::MatrixXd;
-using Eigen::VectorXd;
 
 // External function declarations
 extern "C" SEXP fast_pchal_call(SEXP U_, SEXP D2_, SEXP Y_, SEXP lambda_);
@@ -26,7 +30,7 @@ extern "C" SEXP ridge_call(SEXP Y_, SEXP U_, SEXP D2_, SEXP lambda_);
 extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_);
 extern "C" SEXP kernel_cross_call(SEXP X_, SEXP X2_, SEXP m_, SEXP center_);
 
-// Simple power iteration for top k eigenvectors
+// Simple power iteration for top k eigenvectors (used by both R and Python)
 static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorXd& D) {
   const int n = A.rows();
   V.resize(n, k);
@@ -61,6 +65,7 @@ static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorX
   }
 }
 
+// R-specific CV function
 extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
                               SEXP lambdas_, SEXP nfolds_, SEXP predict_, SEXP m_, SEXP center_, SEXP approx_, SEXP l1_) {
   // 1. Input Validation
