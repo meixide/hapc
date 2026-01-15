@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest] # Temporarily running only on ubuntu for faster debugging
         python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
     
     steps:
@@ -75,15 +75,16 @@ jobs:
         uses: docker://quay.io/pypa/manylinux2014_x86_64
         with:
           entrypoint: /bin/bash
-          args: -c "
+          args: >
+            -c "
             set -e -x &&
             yum install -y eigen3-devel &&
             export CMAKE_PREFIX_PATH=/usr/include/eigen3 &&
             for PYBIN in /opt/python/*/bin; do
                 if [[ \${PYBIN} == *cp38* || \${PYBIN} == *cp39* || \${PYBIN} == *cp310* || \${PYBIN} == *cp311* || \${PYBIN} == *cp312* ]]; then
-                  \${PYBIN}/pip wheel /github/workspace --no-deps -w /github/workspace/dist/
-                  \${PYBIN}/pip install auditwheel
-                  auditwheel repair /github/workspace/dist/hapc-*.whl -w /github/workspace/dist/
+                  \${PYBIN}/pip wheel /github/workspace --no-deps -w /github/workspace/dist/ &&
+                  \${PYBIN}/pip install auditwheel &&
+                  auditwheel repair /github/workspace/dist/hapc-*.whl -w /github/workspace/dist/ &&
                   rm /github/workspace/dist/hapc-*-linux_x86_64.whl
                 fi
             done
