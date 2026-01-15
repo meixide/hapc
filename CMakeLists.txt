@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
 # Find Eigen3
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+find_package(Eigen3 REQUIRED NO_MODULE)
 
 # Find pybind11 via Python
 execute_process(
