@@ -1,26 +1,11 @@
-#define R_NO_REMAP
-#include <Rinternals.h>
 
-#ifdef length
-#undef length
-#endif
-#ifdef min
-#undef min
-#endif
-#ifdef max
-#undef max
-#endif
 
-#include <R_ext/Print.h>
 #include <RcppEigen.h>
 #include <vector>
 #include <numeric>
 #include <random>
 #include <algorithm>
 
-using Eigen::Map;
-using Eigen::MatrixXd;
-using Eigen::VectorXd;
 
 // --------------------------------------------------------------------------
 // External Function Declarations

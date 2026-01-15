@@ -1,0 +1,6 @@
+^.*\.so$
+^CMakeLists.txt$
+^build/
+^python/
+^\.git/
+^src/bindings.cpp$

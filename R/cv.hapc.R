@@ -35,8 +35,12 @@ cv.hapc <- function(X, Y,family='gaussian',
   log_lambda_min <- as.numeric(log_lambda_min)
   log_lambda_max <- as.numeric(log_lambda_max)
   nfolds <- as.numeric(nfolds)
-  predict <- matrix(predict, ncol=p)
-  print(dim(predict))
+  
+  # Convert predict to matrix if not NULL
+  if (!is.null(predict)) {
+    predict <- matrix(predict, ncol=p)
+  }
+  
   p <- ncol(X)
 
   if (norm == "sv") {
@@ -49,7 +53,7 @@ cv.hapc <- function(X, Y,family='gaussian',
             as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))), as.integer(nfolds),
             as.integer(max_iter), as.numeric(tol),
             as.numeric(step_factor), as.logical(verbose), as.character(crit),
-            matrix(predict, ncol=p), as.logical(center), PACKAGE = "hapc")
+            if (is.null(predict)) NULL else predict, as.logical(center), PACKAGE = "hapc")
     } else if (family == "binomial") {
       res <- .Call("pchal_cv_classi_call",
             as.matrix(X), as.numeric(Y),
@@ -57,7 +61,7 @@ cv.hapc <- function(X, Y,family='gaussian',
             as.numeric(exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))), as.integer(nfolds),
             as.integer(max_iter), as.numeric(tol),
             as.numeric(step_factor), as.logical(verbose), as.character(crit),
-            matrix(predict, ncol=p), as.logical(center), NULL, PACKAGE = "hapc")
+            if (is.null(predict)) NULL else predict, as.logical(center), NULL, PACKAGE = "hapc")
     } else {
       stop("Unknown family type")
     }

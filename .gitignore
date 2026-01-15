@@ -1,0 +1,40 @@
+# Build artifacts
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.so
+*.o
+*.a
+*.dylib
+*.dll
+*.pyd
+
+# Python
+.venv/
+venv/
+env/
+*.pyc
+.pytest_cache/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_build/
+*.cmake
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# R
+.Rhistory
+.RData
+src/*.o
+src/*.so

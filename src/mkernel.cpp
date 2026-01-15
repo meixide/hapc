@@ -1,126 +1,70 @@
-#define R_NO_REMAP
-#include <Rinternals.h>
-#ifdef length
-#undef length
-#endif
-#ifdef min
-#undef min
-#endif
-#ifdef max
-#undef max
-#endif
+#include "hapc_core.hpp"
 #include <vector>
 #include <algorithm>
-#include <cmath>
 
-// Modified kernel limited to subsets up to size m:
-// K(x, x') = sum_i sum_{s subseteq s_i(x,x'), |s|<=m} 1
-//          = sum_i sum_{k=0}^{min(g,m)} C(g,k)
-// where g = |s_i(x,x')| = #{ j : X[i,j] <= min(x_j, x'_j) }
-extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_) {
-    if (TYPEOF(X_) != REALSXP || !Rf_isMatrix(X_))
-        Rf_error("X must be a numeric (double) matrix");
-    const int n = Rf_nrows(X_);
-    const int p = Rf_ncols(X_);
-    const double* Xp = REAL(X_);
+MatrixXd mkernel_call(const MatrixXd& X, int m, bool center) {
+    const int n = X.rows();
+    const int p = X.cols();
     
-    // Extract m robustly
-    int m;
-    if (TYPEOF(m_) == INTSXP) {
-        m = INTEGER(m_)[0];
-    } else if (TYPEOF(m_) == REALSXP) {
-        m = static_cast<int>(REAL(m_)[0]);
-    } else {
-        Rf_error("Argument 'm' must be numeric or integer");
-    }
+    if (n <= 0 || p <= 0) throw std::runtime_error("Invalid matrix dimensions");
     if (m < 0) m = 0;
     if (m > p) m = p;
     
-    // Precompute partial sums using stable incremental computation
-    // psum[g] = sum_{k=0}^{min(g,m)} C(g,k)
     std::vector<double> psum(p + 1, 0.0);
-    
-    // For small values, use direct computation
-    psum[0] = 1.0;  // C(0,0) = 1
+    psum[0] = 1.0;
     
     for (int g = 1; g <= p; ++g) {
         const int kmax = std::min(g, m);
-        
-        // Compute sum incrementally: sum += C(g,k) for k=0..kmax
-        // Use recurrence: C(g,k) = C(g,k-1) * (g-k+1) / k
-        double sum = 1.0;  // k=0: C(g,0) = 1
+        double sum = 1.0;
         double binom = 1.0;
-        
         for (int k = 1; k <= kmax; ++k) {
-            binom = binom * (g - k + 1) / k;  // C(g,k) = C(g,k-1) * (g-k+1) / k
+            binom = binom * (g - k + 1) / k;
             sum += binom;
         }
-        
         psum[g] = sum;
     }
     
-    // Allocate output matrix K (n x n)
-    SEXP K_ = PROTECT(Rf_allocMatrix(REALSXP, n, n));
-    double* K = REAL(K_);
-    std::fill(K, K + n * n, 0.0);
+    MatrixXd K = MatrixXd::Zero(n, n);
     
-    // Main loops (upper triangle + mirror)
     for (int a = 0; a < n; ++a) {
         for (int b = a; b < n; ++b) {
             double s = 0.0;
             for (int i = 0; i < n; ++i) {
                 int g = 0;
                 for (int j = 0; j < p; ++j) {
-                    const double xa = Xp[a + j * n];
-                    const double xb = Xp[b + j * n];
-                    const double xi = Xp[i + j * n];
-                    // Handle NaNs: comparisons with NaN are false, so they don't increment g
-                    const double thr = (xa < xb) ? xa : xb;
-                    if (xi <= thr) ++g;
+                    double thr = (X(a, j) < X(b, j)) ? X(a, j) : X(b, j);
+                    if (X(i, j) <= thr) ++g;
                 }
-                // Contribution: sum_{k=0}^{min(g,m)} C(g,k)
-                const int gg = (g <= p) ? g : p;  // safety
-                s += psum[gg] - 1.0;
+                s += psum[g] - 1.0;
             }
-            K[a + b * n] = s;
-            if (a != b) K[b + a * n] = s;
+            K(a, b) = s;
+            if (a != b) K(b, a) = s;
         }
     }
     
-    // Centering if requested: K <- J K J, where J = I - (1/n)11^T
-    if (Rf_asLogical(center_) == TRUE) {
-        // Compute row means
+    if (center) {
         std::vector<double> rowmean(n, 0.0);
         std::vector<double> colmean(n, 0.0);
         double grand = 0.0;
-
+        
         for (int a = 0; a < n; ++a) {
-            double rs = 0.0;
-            for (int b = 0; b < n; ++b) {
-                rs += K[a + b * n];
-            }
+            double rs = K.row(a).sum();
             rowmean[a] = rs / n;
             grand += rs;
         }
         grand /= (n * n);
-
-        // col means
+        
         for (int b = 0; b < n; ++b) {
-            double cs = 0.0;
-            for (int a = 0; a < n; ++a) {
-                cs += K[a + b * n];
-            }
+            double cs = K.col(b).sum();
             colmean[b] = cs / n;
         }
-
-        // Apply K_{ab} <- K_{ab} - rowmean[a] - colmean[b] + grand
+        
         for (int a = 0; a < n; ++a) {
             for (int b = 0; b < n; ++b) {
-                K[a + b * n] = K[a + b * n] - rowmean[a] - colmean[b] + grand;
+                K(a, b) = K(a, b) - rowmean[a] - colmean[b] + grand;
             }
         }
     }
-
-    UNPROTECT(1);
-    return K_;
+    
+    return K;
 }

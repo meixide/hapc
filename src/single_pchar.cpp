@@ -1,5 +1,6 @@
 #define R_NO_REMAP
 #include <Rinternals.h>
+
 #ifdef length
 #undef length
 #endif
@@ -9,16 +10,20 @@
 #ifdef max
 #undef max
 #endif
+
 #include <R_ext/Print.h>
+#include "hapc_core.hpp"
+
+using Eigen::Map;
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+
 #include <RcppEigen.h>
 #include <vector>
 #include <numeric>
 #include <random>
 #include <algorithm>
 
-using Eigen::Map;
-using Eigen::MatrixXd;
-using Eigen::VectorXd;
 
 // External declarations
 extern "C" SEXP mkernel_call(SEXP X_, SEXP m_, SEXP center_);
@@ -65,7 +70,8 @@ static void power_iteration_top_k(const MatrixXd& A, int k, MatrixXd& V, VectorX
 // FUNCTION: single_lambda_pchar
 // --------------------------------------------------------
 extern "C" SEXP single_lambda_pchar(SEXP X_, SEXP Y_, SEXP npc_, 
-                                    SEXP lambda_, SEXP predict_, SEXP m_, SEXP center_, SEXP approx_, SEXP l1_) {
+                                    SEXP lambda_, SEXP predict_, SEXP m_, 
+                                    SEXP center_, SEXP approx_, SEXP l1_) {
   if (!Rf_isReal(X_) || !Rf_isReal(Y_))
     Rf_error("X and Y must be numeric.");
     
@@ -162,6 +168,13 @@ extern "C" SEXP single_lambda_pchar(SEXP X_, SEXP Y_, SEXP npc_,
   } else {
     Rprintf("Using L2 penalty (Ridge)\n");
     res_opt = PROTECT(ridge_call(Y_target, U_sexp, D2_sexp, lambda_)); prot++;
+    // print alpha for debugging
+    Rprintf("Alpha from ridge_call:\n");
+    for (int i = 0; i < npc; ++i) {
+
+        Rprintf("%f ", REAL(res_opt)[i]);
+    }
+    Rprintf("\n");  
   }
 
   // Predictions (if needed)

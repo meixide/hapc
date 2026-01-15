@@ -1,26 +1,11 @@
 // logistic_call.cpp
-#define R_NO_REMAP
-#include <Rinternals.h>
 
 // ---- Fix R macro conflicts ----
-#ifdef length
-#undef length
-#endif
-#ifdef min
-#undef min
-#endif
-#ifdef max
-#undef max
-#endif
 
-#include <R_ext/Print.h>
 #include <RcppEigen.h>
 #include <cmath>
 #include <algorithm>
 
-using Eigen::Map;
-using Eigen::MatrixXd;
-using Eigen::VectorXd;
 
 extern "C" SEXP logistic_call(SEXP Y_, SEXP X_, SEXP lambda_) {
     // 1. Check dimensions and input types
