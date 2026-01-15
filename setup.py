@@ -2,7 +2,11 @@
 
 from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext
+import os
+import subprocess
+import sys
 import time
+from pathlib import Path
 
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir=''):
@@ -74,7 +78,7 @@ setup(
     packages=find_packages(where="python"),
     package_dir={"": "python"},
     ext_modules=[CMakeExtension('hapc/hapc_core')],
-    cmdclass=dict(build_ext=CMakeBuild),,
+    cmdclass=dict(build_ext=CMakeBuild),
     python_requires=">=3.8",
     install_requires=[
         "numpy>=1.24,<2.3",

@@ -51,14 +51,9 @@ jobs:
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          # Install cmake and Eigen3 via vcpkg (Windows package manager)
+          # Install cmake via choco
           choco install cmake -y
-          # Install Eigen3 via vcpkg
-          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
-          cd C:\vcpkg
-          .\bootstrap-vcpkg.bat
-          .\vcpkg install eigen3:x64-windows
-          # Install pip packages
+          # Install pip packages (Eigen3 will be downloaded via FetchContent in CMake)
           pip install --upgrade pip setuptools wheel pybind11 numpy scipy scikit-learn
       
       - name: Setup MSVC (Windows only)
@@ -70,8 +65,6 @@ jobs:
       - name: Build wheel
         if: runner.os != 'Linux'
         run: python -m pip wheel . --no-deps -w dist/ -v
-        env:
-          CMAKE_PREFIX_PATH: C:/vcpkg/installed/x64-windows
 
       - name: Build manylinux wheels
         if: runner.os == 'Linux'
