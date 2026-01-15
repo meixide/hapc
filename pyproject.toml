@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hapc"
-version = "0.1.1"
+version = "0.1.2"
 description = "Hierarchical Additive Polynomial Complexity regression"
 readme = "README.md"
 requires-python = ">=3.8"
