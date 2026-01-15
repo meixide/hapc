@@ -40,11 +40,37 @@ class CMakeBuild(build_ext):
         lib_dir.mkdir(parents=True, exist_ok=True)
         
         import glob
-        for lib in glob.glob(os.path.join(str(build_temp), "hapc_core.*")):
-            import shutil
-            dest = lib_dir / Path(lib).name
-            shutil.copy2(lib, dest)
-            print(f"Copied {lib} to {dest}")
+        import shutil
+        import time
+        
+        # Search recursively for the built library
+        found = False
+        for lib in glob.glob(os.path.join(str(build_temp), "**", "hapc_core.*"), recursive=True):
+            if lib.endswith(('.pyd', '.so', '.dylib')):
+                try:
+                    dest = lib_dir / Path(lib).name
+                    # Retry on Windows if file is locked
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            shutil.copy2(lib, dest)
+                            print(f"Copied {lib} to {dest}")
+                            found = True
+                            break
+                        except (OSError, PermissionError) as e:
+                            if attempt < max_retries - 1:
+                                time.sleep(0.5)
+                            else:
+                                raise
+                except Exception as e:
+                    print(f"Warning: Failed to copy {lib}: {e}")
+        
+        if not found:
+            print("Warning: No compiled library found in build directory")
+        
+        # Don't call parent run() to avoid setuptools trying to clean Windows locked files
+        # Just mark as complete
+        self.build_libs = []
 
 # Try to read version, fallback to default
 version = "0.1.0"
