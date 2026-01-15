@@ -70,8 +70,8 @@ jobs:
           CMAKE_PREFIX_PATH: C:/vcpkg/installed/x64-windows
       
       - name: List built wheels
-        run: |
-          python -c "import os; print('\\n'.join([f'{f}: {os.path.getsize(os.path.join(\"dist\", f))} bytes' for f in os.listdir('dist/')]))"
+        shell: bash
+        run: ls -R dist/
       
       - name: Clean up build artifacts
         if: always() && runner.os != 'Windows'
