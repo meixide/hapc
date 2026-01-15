@@ -146,7 +146,17 @@ jobs:
       - name: Organize wheels
         run: |
           mkdir -p dist
-          find wheels-temp -name "*.whl" -exec cp {} dist/ \;
+          if [ -d wheels-temp ]; then
+            echo "Copying wheel artifacts from wheels-temp to dist/"
+            find wheels-temp -name "*.whl" -exec cp {} dist/ \;
+          else
+            echo "No wheels-temp directory found; proceeding with sdist only."
+          fi
+
+      - name: List files to publish
+        run: |
+          echo "Contents of dist/:"
+          ls -R dist/ || echo "dist/ directory is empty or missing"
       
       - name: Publish to PyPI
         env:
