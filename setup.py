@@ -77,23 +77,6 @@ setup(
     package_dir={"": "python"},
     ext_modules=[Extension("hapc._core", [])],
     cmdclass={"build_ext": CMakeBuild},
-    install_requires=[
-        "numpy>=1.24,<2.3",
-        "scipy>=1.7",
-        "scikit-learn>=0.24",
-    ],
-    extras_require={
-        "dev": ["pytest", "pytest-cov"],
-    },
     python_requires=">=3.8",
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
     include_package_data=True,
 )
