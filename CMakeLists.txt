@@ -22,7 +22,11 @@ if(NOT Eigen3_FOUND)
         Eigen3
         URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
         URL_HASH SHA256=8586084f71f9bde545ee7fa6d00288b264a2b7ac3607b974e54d13e7162c1c72
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
+    # Disable Eigen tests and demos to speed up configuration
+    set(EIGEN_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(Eigen3)
 endif()
 
