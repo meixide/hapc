@@ -65,9 +65,29 @@ jobs:
           arch: x64
       
       - name: Build wheel
+        if: runner.os != 'Linux'
         run: python -m pip wheel . --no-deps -w dist/ -v
         env:
           CMAKE_PREFIX_PATH: C:/vcpkg/installed/x64-windows
+
+      - name: Build manylinux wheels
+        if: runner.os == 'Linux'
+        uses: docker://quay.io/pypa/manylinux2014_x86_64
+        with:
+          entrypoint: /bin/bash
+          args: -c "
+            set -e -x &&
+            yum install -y eigen3-devel &&
+            export CMAKE_PREFIX_PATH=/usr/include/eigen3 &&
+            for PYBIN in /opt/python/*/bin; do
+                if [[ \${PYBIN} == *cp38* || \${PYBIN} == *cp39* || \${PYBIN} == *cp310* || \${PYBIN} == *cp311* || \${PYBIN} == *cp312* ]]; then
+                  \${PYBIN}/pip wheel /github/workspace --no-deps -w /github/workspace/dist/
+                  \${PYBIN}/pip install auditwheel
+                  auditwheel repair /github/workspace/dist/hapc-*.whl -w /github/workspace/dist/
+                  rm /github/workspace/dist/hapc-*-linux_x86_64.whl
+                fi
+            done
+            "
       
       - name: List built wheels
         shell: bash
