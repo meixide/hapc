@@ -74,12 +74,20 @@ jobs:
           python -c "import os; print('\\n'.join([f'{f}: {os.path.getsize(os.path.join(\"dist\", f))} bytes' for f in os.listdir('dist/')]))"
       
       - name: Clean up build artifacts
-        if: always()
+        if: always() && runner.os != 'Windows'
         shell: bash
         run: |
           rm -rf build/
           rm -rf *.egg-info
           rm -rf CMakeCache.txt
+      
+      - name: Clean up build artifacts (Windows)
+        if: always() && runner.os == 'Windows'
+        shell: powershell
+        run: |
+          if (Test-Path "build") { Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue }
+          if (Test-Path "*.egg-info") { Remove-Item -Recurse -Force "*.egg-info" -ErrorAction SilentlyContinue }
+          if (Test-Path "CMakeCache.txt") { Remove-Item -Force "CMakeCache.txt" -ErrorAction SilentlyContinue }
       
       - name: Upload wheels to artifact
         uses: actions/upload-artifact@v4
