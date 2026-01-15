@@ -4,6 +4,8 @@ project(hapc)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+include(FetchContent)
+
 # Windows: Add vcpkg to CMAKE_PREFIX_PATH if it exists
 if(WIN32 AND EXISTS "C:/vcpkg")
     list(APPEND CMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows")
@@ -12,8 +14,17 @@ endif()
 # Find Python
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
-# Find Eigen3
-find_package(Eigen3 REQUIRED NO_MODULE)
+# Find Eigen3 with fallback to FetchContent for Windows
+find_package(Eigen3 QUIET NO_MODULE)
+if(NOT Eigen3_FOUND)
+    message(STATUS "Eigen3 not found, downloading via FetchContent...")
+    FetchContent_Declare(
+        Eigen3
+        URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz
+        URL_HASH SHA256=8586084f71f9bde3b89d22949103ba5efbc07073df8ff450083dee12416d7d345
+    )
+    FetchContent_MakeAvailable(Eigen3)
+endif()
 
 # Find pybind11 via Python
 execute_process(
