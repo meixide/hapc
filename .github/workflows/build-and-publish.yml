@@ -48,11 +48,26 @@ jobs:
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install cmake visualstudio2022-workload-nativedesktop -y
+          # Install cmake and Eigen3 via vcpkg (Windows package manager)
+          choco install cmake -y
+          # Install Eigen3 via vcpkg
+          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+          cd C:\vcpkg
+          .\bootstrap-vcpkg.bat
+          .\vcpkg install eigen3:x64-windows
+          # Install pip packages
           pip install --upgrade pip setuptools wheel pybind11 numpy scipy scikit-learn
       
+      - name: Setup MSVC (Windows only)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      
       - name: Build wheel
-        run: python -m pip wheel . --no-deps -w dist/
+        run: python -m pip wheel . --no-deps -w dist/ -v
+        env:
+          CMAKE_PREFIX_PATH: C:/vcpkg/installed/x64-windows
       
       - name: List built wheels
         run: |

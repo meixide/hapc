@@ -4,6 +4,11 @@ project(hapc)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Windows: Add vcpkg to CMAKE_PREFIX_PATH if it exists
+if(WIN32 AND EXISTS "C:/vcpkg")
+    list(APPEND CMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows")
+endif()
+
 # Find Python
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 
