@@ -28,25 +28,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake libeigen3-dev build-essential
-          pip install --upgrade pip setuptools wheel pybind11
+          pip install --upgrade pip setuptools wheel pybind11 numpy scipy scikit-learn
       
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install cmake eigen
-          pip install --upgrade pip setuptools wheel pybind11
+          pip install --upgrade pip setuptools wheel pybind11 numpy scipy scikit-learn
       
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
           choco install cmake visualstudio2022-workload-nativedesktop -y
-          pip install --upgrade pip setuptools wheel pybind11
+          pip install --upgrade pip setuptools wheel pybind11 numpy scipy scikit-learn
       
       - name: Build wheel
         run: python -m pip wheel . --no-deps -w dist/
       
+      - name: List built wheels
+        run: ls -lh dist/
+      
       - name: Upload wheels to artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
           path: dist/
@@ -73,7 +76,7 @@ jobs:
         run: python -m build --sdist
       
       - name: Download all wheels
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: wheels-temp
       
