@@ -1,5 +1,8 @@
 name: Build and Publish Wheels
 
+permissions:
+  contents: write
+
 on:
   push:
     tags:
