@@ -2,89 +2,47 @@
 
 from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext
-import subprocess
-import sys
-import os
-from pathlib import Path
+import time
+
+class CMakeExtension(Extension):
+    def __init__(self, name, sourcedir=''):
+        Extension.__init__(self, name, sources=[])
+        self.sourcedir = os.path.abspath(sourcedir)
 
 class CMakeBuild(build_ext):
-    """Custom build using CMake."""
     def run(self):
         try:
-            subprocess.check_output(["cmake", "--version"])
+            out = subprocess.check_output(['cmake', '--version'])
         except OSError:
-            raise RuntimeError("CMake is required to build hapc. Install with: pip install cmake")
-        
-        build_temp = Path(self.build_temp) / "cmake_build"
-        build_temp.mkdir(parents=True, exist_ok=True)
-        
-        project_root = Path(__file__).parent
-        
-        cmake_args = [
-            f"-DCMAKE_BUILD_TYPE=Release",
-            f"-DPYTHON_EXECUTABLE={sys.executable}",
-        ]
-        
-        subprocess.check_call(
-            ["cmake", str(project_root)] + cmake_args,
-            cwd=str(build_temp)
-        )
-        
-        subprocess.check_call(
-            ["cmake", "--build", ".", "--config", "Release"],
-            cwd=str(build_temp)
-        )
-        
-        # Copy library to package
-        lib_dir = project_root / "python" / "hapc"
-        lib_dir.mkdir(parents=True, exist_ok=True)
-        
-        import glob
-        import shutil
-        import time
-        
-        # Search recursively for the built library
-        # Try multiple patterns to ensure we find it on all platforms
-        search_patterns = [
-            os.path.join(str(build_temp), "**", "hapc_core.*"),
-            os.path.join(str(build_temp), "**", "*", "hapc_core.*"),
-            os.path.join(str(build_temp), "**", "*", "*", "hapc_core.*"),
-        ]
-        
-        found = False
-        for pattern in search_patterns:
-            for lib in glob.glob(pattern, recursive=True):
-                if lib.endswith(('.pyd', '.so', '.dylib')):
-                    try:
-                        dest = lib_dir / Path(lib).name
-                        # Retry on Windows if file is locked
-                        max_retries = 3
-                        for attempt in range(max_retries):
-                            try:
-                                shutil.copy2(lib, dest)
-                                print(f"[OK] Copied {lib} to {dest}")
-                                found = True
-                                break
-                            except (OSError, PermissionError) as e:
-                                if attempt < max_retries - 1:
-                                    time.sleep(0.5)
-                                else:
-                                    raise
-                        if found:
-                            break
-                    except Exception as e:
-                        print(f"Warning: Failed to copy {lib}: {e}")
-            if found:
-                break
-        
-        if not found:
-            print(f"ERROR: No compiled library found in build directory {build_temp}")
-            print(f"  Searched for: hapc_core.pyd (Windows), hapc_core.so (Linux), hapc_core.dylib (macOS)")
-            raise RuntimeError("Failed to locate compiled hapc_core extension")
-        
-        # Don't call parent run() to avoid setuptools trying to clean Windows locked files
-        # Just mark as complete
-        self.build_libs = []
+            raise RuntimeError("CMake must be installed to build the following extensions: " +
+                               ", ".join(e.name for e in self.extensions))
+
+        for ext in self.extensions:
+            self.build_extension(ext)
+
+    def build_extension(self, ext):
+        extdir = os.path.abspath(os.path.dirname(self.get_ext_fullpath(ext.name)))
+        # required for auto-detection of auxiliary "native" libs
+        if not extdir.endswith(os.path.sep):
+            extdir += os.path.sep
+
+        cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
+                      '-DPYTHON_EXECUTABLE=' + sys.executable]
+
+        cfg = 'Debug' if self.debug else 'Release'
+        build_args = ['--config', cfg]
+
+        cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
+        build_args += ['--', '-j2']
+
+
+        env = os.environ.copy()
+        env['CXXFLAGS'] = '{} -DVERSION_INFO=\\"{}\\"'.format(env.get('CXXFLAGS', ''),
+                                                          self.distribution.get_version())
+        if not os.path.exists(self.build_temp):
+            os.makedirs(self.build_temp)
+        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
+        subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
 
 # Try to read version, fallback to default
 version = "0.1.0"
@@ -115,9 +73,14 @@ setup(
     license="MIT",
     packages=find_packages(where="python"),
     package_dir={"": "python"},
-    # Correctly name the extension to be part of the 'hapc' package
-    ext_modules=[Extension("hapc.hapc_core", [])],
-    cmdclass={"build_ext": CMakeBuild},
+    ext_modules=[CMakeExtension('hapc/hapc_core')],
+    cmdclass=dict(build_ext=CMakeBuild),,
     python_requires=">=3.8",
+    install_requires=[
+        "numpy>=1.24,<2.3",
+        "scipy>=1.7",
+        "scikit-learn>=0.24",
+    ],
     include_package_data=True,
+    zip_safe=False,
 )
