@@ -2,13 +2,10 @@
 
 from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext
-from wheel.bdist_wheel import bdist_wheel
 import subprocess
 import sys
 import os
 from pathlib import Path
-import glob
-import shutil
 
 class CMakeBuild(build_ext):
     """Custom build using CMake."""
@@ -38,9 +35,13 @@ class CMakeBuild(build_ext):
             cwd=str(build_temp)
         )
         
-        # Copy library to package directory (critical for wheel packaging)
+        # Copy library to package
         lib_dir = project_root / "python" / "hapc"
         lib_dir.mkdir(parents=True, exist_ok=True)
+        
+        import glob
+        import shutil
+        import time
         
         # Search recursively for the built library
         # Try multiple patterns to ensure we find it on all platforms
@@ -81,15 +82,9 @@ class CMakeBuild(build_ext):
             print(f"  Searched for: hapc_core.pyd (Windows), hapc_core.so (Linux), hapc_core.dylib (macOS)")
             raise RuntimeError("Failed to locate compiled hapc_core extension")
         
-        # Mark as complete
+        # Don't call parent run() to avoid setuptools trying to clean Windows locked files
+        # Just mark as complete
         self.build_libs = []
-
-
-class BdistWheelCommand(bdist_wheel):
-    """Ensure hapc_core extension is included in wheel."""
-    def finalize_options(self):
-        super().finalize_options()
-        self.universal = False  # Not universal, platform-specific
 
 # Try to read version, fallback to default
 version = "0.1.0"
@@ -120,25 +115,9 @@ setup(
     license="MIT",
     packages=find_packages(where="python"),
     package_dir={"": "python"},
-    # Include the compiled extension in the package
-    package_data={
-        "hapc": [
-            "hapc_core*.so",
-            "hapc_core*.pyd",
-            "hapc_core*.dylib",
-        ]
-    },
-    ext_modules=[Extension("hapc._core", [])],
-    cmdclass={
-        "build_ext": CMakeBuild,
-        "bdist_wheel": BdistWheelCommand,
-    },
+    # Correctly name the extension to be part of the 'hapc' package
+    ext_modules=[Extension("hapc.hapc_core", [])],
+    cmdclass={"build_ext": CMakeBuild},
     python_requires=">=3.8",
-    install_requires=[
-        "numpy>=1.24,<2.3",
-        "scipy>=1.7",
-        "scikit-learn>=0.24",
-    ],
     include_package_data=True,
-    zip_safe=False,
 )
