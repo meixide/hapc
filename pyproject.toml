@@ -11,7 +11,7 @@ requires-python = ">=3.8"
 authors = [
     {name = "Carlos García Meixide", email = "cgmeixide@gmail.com"}
 ]
-license = {text = "MIT"}
+license = "MIT"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",

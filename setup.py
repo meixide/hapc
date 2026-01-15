@@ -5,7 +5,6 @@ from setuptools.command.build_ext import build_ext
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 class CMakeExtension(Extension):
@@ -37,7 +36,10 @@ class CMakeBuild(build_ext):
         build_args = ['--config', cfg]
 
         cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
-        build_args += ['--', '-j2']
+        # Add parallel build flag only on non-Windows platforms
+        # On Windows, MSBuild doesn't support -j flag and handles parallelization automatically
+        if sys.platform != 'win32':
+            build_args += ['--', '-j2']
 
 
         env = os.environ.copy()
@@ -77,14 +79,11 @@ setup(
     license="MIT",
     packages=find_packages(where="python"),
     package_dir={"": "python"},
-    ext_modules=[CMakeExtension('hapc/hapc_core')],
+    ext_modules=[CMakeExtension('hapc/hapc_core', sourcedir=os.path.dirname(os.path.abspath(__file__)))],
     cmdclass=dict(build_ext=CMakeBuild),
     python_requires=">=3.8",
-    install_requires=[
-        "numpy>=1.24,<2.3",
-        "scipy>=1.7",
-        "scikit-learn>=0.24",
-    ],
+    # Dependencies are defined in pyproject.toml [project.dependencies]
+    # install_requires is omitted here to avoid conflicts with pyproject.toml
     include_package_data=True,
     zip_safe=False,
 )
