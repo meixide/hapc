@@ -6,42 +6,18 @@ import sys
 from pathlib import Path
 
 # Try to import hapc_core module
-hapc_core = None
-
-# Try direct import
 try:
-    import hapc_core
+    # This is the standard way for an installed package
+    from . import hapc_core
 except ImportError:
-    pass
-
-# Try relative import
-if hapc_core is None:
+    # Fallback for development mode
     try:
-        from .. import hapc_core
+        import hapc_core
     except ImportError:
-        pass
-
-# Try to find it in known locations
-if hapc_core is None:
-    search_paths = [
-        Path(__file__).parent,  # Same directory as this file
-        Path(__file__).parent.parent.parent / "build",  # Build directory
-    ]
-    
-    for path in search_paths:
-        if path.exists():
-            sys.path.insert(0, str(path))
-            try:
-                import hapc_core
-                break
-            except ImportError:
-                continue
-
-if hapc_core is None:
-    raise ImportError(
-        "hapc_core module not found. The C++ extension may not be built.\n"
-        "Try: pip install -e . --force-reinstall --no-cache-dir"
-    )
+        raise ImportError(
+            "hapc_core module not found. The C++ extension may not be built.\n"
+            "Try: pip install -e . --force-reinstall --no-cache-dir"
+        )
 
 class DesignOutput(NamedTuple):
     """Output from pchal_design."""
