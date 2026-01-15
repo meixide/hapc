@@ -1,6 +1,6 @@
 """HAPC: Highly Adaptive Principal Components."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.4"
 
 from .core import (
     pchal_design,
