@@ -44,29 +44,43 @@ class CMakeBuild(build_ext):
         import time
         
         # Search recursively for the built library
+        # Try multiple patterns to ensure we find it on all platforms
+        search_patterns = [
+            os.path.join(str(build_temp), "**", "hapc_core.*"),
+            os.path.join(str(build_temp), "**", "*", "hapc_core.*"),
+            os.path.join(str(build_temp), "**", "*", "*", "hapc_core.*"),
+        ]
+        
         found = False
-        for lib in glob.glob(os.path.join(str(build_temp), "**", "hapc_core.*"), recursive=True):
-            if lib.endswith(('.pyd', '.so', '.dylib')):
-                try:
-                    dest = lib_dir / Path(lib).name
-                    # Retry on Windows if file is locked
-                    max_retries = 3
-                    for attempt in range(max_retries):
-                        try:
-                            shutil.copy2(lib, dest)
-                            print(f"Copied {lib} to {dest}")
-                            found = True
+        for pattern in search_patterns:
+            for lib in glob.glob(pattern, recursive=True):
+                if lib.endswith(('.pyd', '.so', '.dylib')):
+                    try:
+                        dest = lib_dir / Path(lib).name
+                        # Retry on Windows if file is locked
+                        max_retries = 3
+                        for attempt in range(max_retries):
+                            try:
+                                shutil.copy2(lib, dest)
+                                print(f"✓ Copied {lib} to {dest}")
+                                found = True
+                                break
+                            except (OSError, PermissionError) as e:
+                                if attempt < max_retries - 1:
+                                    time.sleep(0.5)
+                                else:
+                                    raise
+                        if found:
                             break
-                        except (OSError, PermissionError) as e:
-                            if attempt < max_retries - 1:
-                                time.sleep(0.5)
-                            else:
-                                raise
-                except Exception as e:
-                    print(f"Warning: Failed to copy {lib}: {e}")
+                    except Exception as e:
+                        print(f"Warning: Failed to copy {lib}: {e}")
+            if found:
+                break
         
         if not found:
-            print("Warning: No compiled library found in build directory")
+            print(f"ERROR: No compiled library found in build directory {build_temp}")
+            print(f"  Searched for: hapc_core.pyd (Windows), hapc_core.so (Linux), hapc_core.dylib (macOS)")
+            raise RuntimeError("Failed to locate compiled hapc_core extension")
         
         # Don't call parent run() to avoid setuptools trying to clean Windows locked files
         # Just mark as complete
@@ -92,7 +106,7 @@ if readme_file.exists():
 setup(
     name="hapc",
     version=version,
-    description="Hierarchical Additive Polynomial Complexity regression",
+    description="Highly Adaptive Principal Components",
     long_description=readme_content,
     long_description_content_type="text/markdown",
     author="Carlos García Meixide",
