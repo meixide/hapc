@@ -27,20 +27,20 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake libeigen3-dev
-          pip install --upgrade pip setuptools wheel cibuildwheel pybind11
+          sudo apt-get install -y cmake libeigen3-dev build-essential
+          pip install --upgrade pip setuptools wheel pybind11
       
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
           brew install cmake eigen
-          pip install --upgrade pip setuptools wheel cibuildwheel pybind11
+          pip install --upgrade pip setuptools wheel pybind11
       
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         run: |
-          choco install cmake -y
-          pip install --upgrade pip setuptools wheel cibuildwheel pybind11
+          choco install cmake visualstudio2022-workload-nativedesktop -y
+          pip install --upgrade pip setuptools wheel pybind11
       
       - name: Build wheel
         run: python -m pip wheel . --no-deps -w dist/
@@ -67,7 +67,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install --upgrade pip setuptools wheel twine
+          pip install --upgrade pip setuptools wheel twine build
       
       - name: Build source distribution
         run: python -m build --sdist
