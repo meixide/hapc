@@ -1,10 +1,5 @@
 include README.md
 include LICENSE
 include CMakeLists.txt
-include DESCRIPTION
-include NAMESPACE
-include pyproject.toml
-include setup.py
-recursive-include R *
-recursive-include src *.cpp *.hpp *.c *.h
-recursive-include python *.py *.so *.pyd *.dylib
+recursive-include src *.cpp *.hpp
+recursive-include python *.py
