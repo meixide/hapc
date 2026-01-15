@@ -5,19 +5,7 @@ from typing import NamedTuple, Optional
 import sys
 from pathlib import Path
 
-# Try to import hapc_core module
-try:
-    # This is the standard way for an installed package
-    from . import hapc_core
-except ImportError:
-    # Fallback for development mode
-    try:
-        import hapc_core
-    except ImportError:
-        raise ImportError(
-            "hapc_core module not found. The C++ extension may not be built.\n"
-            "Try: pip install -e . --force-reinstall --no-cache-dir"
-        )
+from . import hapc_core
 
 class DesignOutput(NamedTuple):
     """Output from pchal_design."""
