@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hapc"
-version = "0.1.2"
+version = "0.1.3"
 description = "Highly Adaptive Principal Components"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [
     {name = "Carlos García Meixide", email = "cgmeixide@gmail.com"}
 ]
-license = {file = "LICENSE"}
+license = {text = "MIT"}
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.8",

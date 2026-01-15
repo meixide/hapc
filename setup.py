@@ -62,7 +62,7 @@ class CMakeBuild(build_ext):
                         for attempt in range(max_retries):
                             try:
                                 shutil.copy2(lib, dest)
-                                print(f"✓ Copied {lib} to {dest}")
+                                print(f"[OK] Copied {lib} to {dest}")
                                 found = True
                                 break
                             except (OSError, PermissionError) as e:
