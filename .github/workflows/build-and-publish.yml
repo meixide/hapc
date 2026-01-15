@@ -55,10 +55,12 @@ jobs:
         run: python -m pip wheel . --no-deps -w dist/
       
       - name: List built wheels
-        run: ls -lh dist/
+        run: |
+          python -c "import os; print('\\n'.join([f'{f}: {os.path.getsize(os.path.join(\"dist\", f))} bytes' for f in os.listdir('dist/')]))"
       
       - name: Clean up build artifacts
         if: always()
+        shell: bash
         run: |
           rm -rf build/
           rm -rf *.egg-info
