@@ -5,6 +5,7 @@ from setuptools.command.build_ext import build_ext
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 class CMakeExtension(Extension):
@@ -82,8 +83,11 @@ setup(
     ext_modules=[CMakeExtension('hapc/hapc_core', sourcedir=os.path.dirname(os.path.abspath(__file__)))],
     cmdclass=dict(build_ext=CMakeBuild),
     python_requires=">=3.8",
-    # Dependencies are defined in pyproject.toml [project.dependencies]
-    # install_requires is omitted here to avoid conflicts with pyproject.toml
+    install_requires=[
+        "numpy>=1.24,<2.3",
+        "scipy>=1.7",
+        "scikit-learn>=0.24",
+    ],
     include_package_data=True,
     zip_safe=False,
 )
