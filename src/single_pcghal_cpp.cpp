@@ -10,7 +10,7 @@ SinglePcghalOutput single_pcghal_fit(const MatrixXd& X, const VectorXd& Y,
                                      const MatrixXd& predict_data,
                                      int max_iter, double tol, double step_factor,
                                      bool verbose, const std::string& crit,
-                                     bool center, bool approx) {
+                                     bool center, bool approx, const std::string& ini) {
   
   const int n = X.rows();
   const int p = X.cols();
@@ -93,13 +93,28 @@ SinglePcghalOutput single_pcghal_fit(const MatrixXd& X, const VectorXd& Y,
       std::cout << "  Ridge regularization: " << (single_lambda * n) << std::endl;
   }
   
-  // Step 6: Initialize alpha using ridge regression
-  VectorXd alpha0 = ridge_call(Y_centered, U, D2, single_lambda);
-  
-  if (verbose) {
-      std::cout << "Initial alpha (from ridge):" << std::endl;
-      std::cout << "  Mean: " << alpha0.mean() << std::endl;
-      std::cout << "  Max abs: " << alpha0.cwiseAbs().maxCoeff() << std::endl;
+  // Step 6: Initialize alpha using LASSO (ini='1', default) or ridge regression (ini='2')
+  // Default is now LASSO initialization (ini='1')
+  VectorXd alpha0;
+  if (ini == "1") {
+      // Initialize with LASSO (fast_pchal_call)
+      alpha0 = fast_pchal_call(U, D2, Y_centered, single_lambda);
+      if (verbose) {
+          std::cout << "Initial alpha (from LASSO):" << std::endl;
+          std::cout << "  Mean: " << alpha0.mean() << std::endl;
+          std::cout << "  Max abs: " << alpha0.cwiseAbs().maxCoeff() << std::endl;
+          std::cout << "  Non-zero count: " << (alpha0.array() != 0.0).count() << std::endl;
+      }
+  } else if (ini == "2") {
+      // Initialize with ridge regression
+      alpha0 = ridge_call(Y_centered, U, D2, single_lambda);
+      if (verbose) {
+          std::cout << "Initial alpha (from ridge):" << std::endl;
+          std::cout << "  Mean: " << alpha0.mean() << std::endl;
+          std::cout << "  Max abs: " << alpha0.cwiseAbs().maxCoeff() << std::endl;
+      }
+  } else {
+      throw std::runtime_error("ini must be '1' (LASSO) or '2' (ridge), got: " + ini);
   }
   
   // Step 7: Create ENn (penalty matrix)

@@ -5,7 +5,7 @@
 // Declarations of your native functions
 extern SEXP pchal_cv_call(SEXP, SEXP, SEXP, SEXP,
                           SEXP, SEXP, SEXP, SEXP,
-                          SEXP, SEXP, SEXP, SEXP, SEXP);
+                          SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP pchal_cv_classi_call(SEXP, SEXP, SEXP, SEXP,
                                  SEXP, SEXP, SEXP, SEXP,
                                  SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -22,7 +22,8 @@ extern SEXP logistic_call(SEXP, SEXP, SEXP);
 extern SEXP pcghal_classi_call(SEXP, SEXP, SEXP, SEXP,
                                     SEXP, SEXP, SEXP, SEXP);
 extern SEXP single_pcghal_call(SEXP, SEXP, SEXP, SEXP,
-                                    SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+                                    SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+extern SEXP single_pcghal_classi_ridge_call(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP single_lambda_pchar(SEXP, SEXP, SEXP, 
                                     SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);                                    
 
@@ -30,7 +31,7 @@ extern SEXP single_lambda_pchar(SEXP, SEXP, SEXP,
 
 // Registration table
 static const R_CallMethodDef CallEntries[] = {
-  {"pchal_cv_call", (DL_FUNC) &pchal_cv_call, 13},
+  {"pchal_cv_call", (DL_FUNC) &pchal_cv_call, 14},
   {"pchal_cv_classi_call", (DL_FUNC) &pchal_cv_classi_call, 14},
   {"fasthal_cv_call", (DL_FUNC) &fasthal_cv_call, 10},
   {"mkernel_call", (DL_FUNC) &mkernel_call, 3},
@@ -41,7 +42,8 @@ static const R_CallMethodDef CallEntries[] = {
   {"ridge_call", (DL_FUNC) &ridge_call, 4},
   {"logistic_call", (DL_FUNC) &logistic_call, 3},
   {"pcghal_classi_call", (DL_FUNC) &pcghal_classi_call, 8},
-  {"single_pcghal_call", (DL_FUNC) &single_pcghal_call, 12},
+  {"single_pcghal_call", (DL_FUNC) &single_pcghal_call, 13},
+  {"single_pcghal_classi_ridge_call", (DL_FUNC) &single_pcghal_classi_ridge_call, 7},
   {"single_lambda_pchar", (DL_FUNC) &single_lambda_pchar, 9},
   {NULL, NULL, 0}
 };

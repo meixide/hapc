@@ -1,22 +1,25 @@
 #' Design matrix generation for PC-HA 
 #'
 #' Generates the design matrix ingredients on which empirical risk minimization
-#' is run for the PC-HA family. 
+#' is run for the PC-HA family.
 #'
-#' @param X A numeric matrix containing the input features.
-#' @param max_degree Integer specifying the maximum order of interaction terms (no more than max_degree - way interaction) for which
-#' basis functions are generated. Default is 1 (no products) and might be increased until ncol(X).
-#' @param npcs Integer specifying the number of principal components to retain.
-#' Default is n.
-#' @param center Logical indicating whether to center the basis functions before
-#' processing. Default is TRUE.
+#' Counterpart to Python \code{hapc.design_hapc()}.
+#'
+#' @seealso \code{\link{hapc}}, \code{\link{kernel.hapc}}
+#'
+#' @param X Numeric matrix of features (\code{nrow} = observations,
+#'   \code{ncol} = covariates).
+#' @param max_degree Integer; maximum HAL interaction order. Default \code{1L}.
+#' @param npcs Integer; number of singular triplets to retain. Default
+#'   \code{nrow(X)} (internally capped when \code{center = TRUE}).
+#' @param center Logical; centre \code{H} before the SVD. Default \code{TRUE}.
 #'
 #' @return A list containing:
 #' \describe{
 #'   \item{H}{HAL design matrix}
-#'   \item{U}{Matrix whose npcs columns are the left singular vectors of H.}
-#'   \item{d}{Vector of the first npcs singular values of H.}
-#'   \item{V}{Matrix whose npcs columns are the right singular vectors of H (principal components).}
+#'   \item{U}{\eqn{n \times k} matrix of left singular vectors (first \eqn{k} columns).}
+#'   \item{d}{Length-\eqn{k} vector of singular values of \eqn{H}.}
+#'   \item{V}{\eqn{B \times k} matrix of right singular vectors (\eqn{B} = number of HAL basis columns).}
 #' }
 #'
 #' @examples

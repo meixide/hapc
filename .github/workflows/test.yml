@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libeigen3-dev build-essential
+
+      - name: Install package and test deps
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
+
+      - name: Run pytest
+        run: pytest tests/ -v --tb=short

@@ -4,3 +4,7 @@
 ^python/
 ^\.git/
 ^src/bindings.cpp$
+^\.pytest_cache/
+^ate_hapc_diagnostics_demo\.png$
+^scripts/
+^Makefile$

@@ -7,29 +7,31 @@
 design.hapc(X, max_degree = 1, npcs = nrow(X), center = TRUE)
 }
 \arguments{
-\item{X}{A numeric matrix containing the input features.}
+\item{X}{Numeric matrix of features (\code{nrow} = observations,
+\code{ncol} = covariates).}
 
-\item{max_degree}{Integer specifying the maximum order of interaction terms (no more than max_degree - way interaction) for which
-basis functions are generated. Default is 1 (no products) and might be increased until ncol(X).}
+\item{max_degree}{Integer; maximum HAL interaction order. Default \code{1L}.}
 
-\item{npcs}{Integer specifying the number of principal components to retain.
-Default is n.}
+\item{npcs}{Integer; number of singular triplets to retain. Default
+\code{nrow(X)} (internally capped when \code{center = TRUE}).}
 
-\item{center}{Logical indicating whether to center the basis functions before
-processing. Default is TRUE.}
+\item{center}{Logical; centre \code{H} before the SVD. Default \code{TRUE}.}
 }
 \value{
 A list containing:
 \describe{
   \item{H}{HAL design matrix}
-  \item{U}{Matrix whose npcs columns are the left singular vectors of H.}
-  \item{d}{Vector of the first npcs singular values of H.}
-  \item{V}{Matrix whose npcs columns are the right singular vectors of H (principal components).}
+  \item{U}{\eqn{n \times k} matrix of left singular vectors (first \eqn{k} columns).}
+  \item{d}{Length-\eqn{k} vector of singular values of \eqn{H}.}
+  \item{V}{\eqn{B \times k} matrix of right singular vectors (\eqn{B} = number of HAL basis columns).}
 }
 }
 \description{
 Generates the design matrix ingredients on which empirical risk minimization
 is run for the PC-HA family.
+}
+\details{
+Counterpart to Python \code{hapc.design_hapc()}.
 }
 \examples{
 \dontrun{
@@ -43,4 +45,7 @@ design_mat <- design.hapc(X)
 design_mat <- design.hapc(X, max_degree = 2, npcs = 50)
 }
 
+}
+\seealso{
+\code{\link{hapc}}, \code{\link{kernel.hapc}}
 }

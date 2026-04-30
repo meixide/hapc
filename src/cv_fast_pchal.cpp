@@ -118,10 +118,8 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   VectorXd D2(npc);
   
   if (approx) {
-    Rprintf("Using approximate eigendecomposition (power iteration)\n");
     power_iteration_top_k(K, npc, U, D2);
   } else {
-    Rprintf("Using exact eigendecomposition\n");
     Eigen::SelfAdjointEigenSolver<MatrixXd> eigensolver(K);
     if (eigensolver.info() != Eigen::Success) {
       Rf_error("Eigendecomposition failed");
@@ -281,12 +279,8 @@ extern "C" SEXP fasthal_cv_call(SEXP X_, SEXP Y_, SEXP npc_,
   
   SEXP res_opt;
   if (l1) {
-    Rprintf("Using L1 penalty (LASSO)\n");
-    Rprintf("Using new cv\n");
     res_opt = PROTECT(fast_pchal_call(U_full, D2_full, Y_full, lam_full)); prot++;
   } else {
-    Rprintf("Using L2 penalty (Ridge)\n");
-    Rprintf("Using new cv\n");
     res_opt = PROTECT(ridge_call(Y_full, U_full, D2_full, lam_full)); prot++;
   }
 
