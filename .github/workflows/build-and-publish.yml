@@ -53,8 +53,10 @@ jobs:
         run: |
           # Install cmake via choco
           choco install cmake -y
-          # Install pip packages (Eigen3 will be downloaded via FetchContent in CMake)
-          pip install --upgrade pip setuptools wheel pybind11 numpy scipy scikit-learn
+          # Do NOT upgrade pip here: GHA Windows images often block in-place pip
+          # self-upgrades ("ERROR: To modify pip, please run ..."), which fails
+          # the whole job. Build deps are enough for `pip wheel`.
+          python -m pip install --upgrade setuptools wheel pybind11 numpy scipy scikit-learn
       
       - name: Setup MSVC (Windows only)
         if: runner.os == 'Windows'
