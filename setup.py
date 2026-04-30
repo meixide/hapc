@@ -64,11 +64,17 @@ class CMakeBuild(build_ext):
             # Try to find it in the build directory
             import glob
             build_dir = Path(self.build_temp)
+            ext_base = Path(extdir)
+            pyd_name = Path(ext_fullpath).name
+            # MSVC multi-config: output often lands under extdir/Release/ even when
+            # CMAKE_LIBRARY_OUTPUT_DIRECTORY points at extdir (see hapc_core.vcxproj -> .../hapc/Release/*.pyd).
             possible_locations = [
                 ext_fullpath,
-                build_dir / 'Release' / Path(ext_fullpath).name,
-                build_dir / 'Debug' / Path(ext_fullpath).name,
-                build_dir / Path(ext_fullpath).name,
+                ext_base / 'Release' / pyd_name,
+                ext_base / 'Debug' / pyd_name,
+                build_dir / 'Release' / pyd_name,
+                build_dir / 'Debug' / pyd_name,
+                build_dir / pyd_name,
             ]
             # Also search for any .pyd/.so/.dylib files with hapc_core in the name
             for pattern in ['hapc_core*.pyd', 'hapc_core*.so', 'hapc_core*.dylib']:
