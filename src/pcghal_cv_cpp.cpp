@@ -1,16 +1,26 @@
-// Cross-validation with PC-GHAL optimizer (C++ wrapper for Python)
+// Cross-validation with PC-GHAL optimizer (C++ wrapper for Python).
+//
+// This function mirrors R's pchal_cv_call: per fold, initialise α with LASSO
+// (or ridge if ini="2"), run projected gradient descent via pcghal_call, and
+// score on the held-out fold.  After CV, refit on full data with the same
+// (init + PGD) pipeline at the best λ.
+//
+// Fold assignment uses std::mt19937(12345) + shuffle, identical to R, so the
+// partitions match between languages.
+
 #include "hapc_core.hpp"
 #include <cmath>
 #include <iostream>
 #include <algorithm>
 #include <numeric>
+#include <random>
 
 CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
                        int maxdeg, int npc, const std::vector<double>& lambdas,
                        int nfolds, const MatrixXd& predict_data,
                        int max_iter, double tol, double step_factor,
                        bool verbose, const std::string& crit,
-                       bool center, bool approx) {
+                       bool center, bool approx, const std::string& ini) {
   
   const int n = X.rows();
   const int p = X.cols();
@@ -81,11 +91,15 @@ CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
   // Step 4: K-fold CV
   std::vector<double> cv_mses(L, 0.0);
   
-  // Simple fold indices
+  // Fold indices: block partition with last fold absorbing the remainder, then
+  // shuffled with std::mt19937(12345). Identical scheme to R's pchal_cv_call so
+  // R and Python produce the same fold assignments for the same n & nfolds.
   std::vector<int> fold_assignment(n);
-  for (int i = 0; i < n; ++i) {
-      fold_assignment[i] = i % nfolds;
-  }
+  const int fold_size = n / nfolds;
+  for (int i = 0; i < n; ++i) fold_assignment[i] = i / fold_size;
+  for (int i = fold_size * nfolds; i < n; ++i) fold_assignment[i] = nfolds - 1;
+  std::mt19937 rng(12345);
+  std::shuffle(fold_assignment.begin(), fold_assignment.end(), rng);
   
   if (verbose) {
       std::cout << "Running " << nfolds << "-fold cross-validation..." << std::endl;
@@ -130,20 +144,31 @@ CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
       double ymean_train = Y_train.mean();
       VectorXd Y_train_centered = Y_train.array() - ymean_train;
       
-      // Test each lambda
+      // Test each lambda — full PGD pipeline: init with LASSO/ridge, then run
+      // pcghal_call (projected gradient descent) and use the optimised α.
+      MatrixXd ENn_train = ENn;  // V is shared across folds (computed on full data)
       for (int j = 0; j < L; ++j) {
           double lambda = lambdas[j];
-          
-          // Initialize with ridge
-          VectorXd alpha = ridge_call(Y_train_centered, U_train, D2, lambda);
-          
-          // Predictions on test set
-          VectorXd y_pred = Xtilde_test * alpha;
+
+          VectorXd alpha0;
+          if (ini == "2") {
+              alpha0 = ridge_call(Y_train_centered, U_train, D2, lambda);
+          } else if (ini == "1") {
+              alpha0 = fast_pchal_call(U_train, D2, Y_train_centered, lambda);
+          } else {
+              throw std::runtime_error("ini must be '1' (LASSO) or '2' (ridge), got: " + ini);
+          }
+
+          OptimizerOutput opt = pcghal_call(Y_train_centered, Xtilde_train,
+                                            ENn_train, alpha0,
+                                            max_iter, tol, step_factor,
+                                            /*verbose=*/false, crit);
+
+          VectorXd y_pred = Xtilde_test * opt.alpha;
           if (center) {
               y_pred.array() += ymean_train;
           }
-          
-          // MSE
+
           VectorXd residuals = Y_test - y_pred;
           cv_mses[j] += residuals.squaredNorm() / n_test;
       }
@@ -169,10 +194,22 @@ CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
       std::cout << "Best lambda: " << best_lambda << " (MSE: " << best_mse << ")" << std::endl;
   }
   
-  // Step 5: Refit on full data with best lambda
-  double ymean = Y.mean();
-  VectorXd Y_centered = Y.array() - ymean;
-  VectorXd best_alpha = ridge_call(Y_centered, U, D2, best_lambda);
+  // Step 5: Refit on full data with best lambda (init + PGD, same pipeline)
+  double ymean = center ? Y.mean() : 0.0;
+  VectorXd Y_centered = center ? (Y.array() - ymean).matrix() : Y;
+
+  VectorXd alpha0_full;
+  if (ini == "2") {
+      alpha0_full = ridge_call(Y_centered, U, D2, best_lambda);
+  } else if (ini == "1") {
+      alpha0_full = fast_pchal_call(U, D2, Y_centered, best_lambda);
+  } else {
+      throw std::runtime_error("ini must be '1' (LASSO) or '2' (ridge), got: " + ini);
+  }
+
+  OptimizerOutput opt_full = pcghal_call(Y_centered, Xtilde, ENn, alpha0_full,
+                                         max_iter, tol, step_factor, verbose, crit);
+  VectorXd best_alpha = opt_full.alpha;
   
   // Step 6: Generate predictions if needed
   VectorXd predictions = VectorXd::Zero(0);

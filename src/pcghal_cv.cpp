@@ -26,11 +26,14 @@ extern "C" SEXP pcghal_call(SEXP Y_, SEXP Xtilde_, SEXP ENn_, SEXP alpha0_,
 // --------------------------------------------------------------------------
 // CV Function
 // --------------------------------------------------------------------------
+// Forward declaration for fast_pchal (LASSO closed form), used as default init.
+extern "C" SEXP fast_pchal_call(SEXP U_, SEXP D2_, SEXP Y_, SEXP lambda_);
+
 extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
                               SEXP lambdas_, SEXP nfolds_,
                               SEXP max_iter_, SEXP tol_, SEXP step_factor_,
                               SEXP verbose_, SEXP crit_,
-                              SEXP predict_, SEXP center_) {
+                              SEXP predict_, SEXP center_, SEXP ini_) {
   
   // 1. Input Validation
   if (!Rf_isReal(X_) || !Rf_isReal(Y_))
@@ -54,6 +57,11 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
   bool center = true;
   if (Rf_isLogical(center_)) center = LOGICAL(center_)[0];
   else Rf_error("center must be logical");
+
+  // Initialiser selector (string "1" = LASSO, "2" = ridge). Default = LASSO.
+  std::string ini = (Rf_isNull(ini_) || !Rf_isString(ini_))
+                        ? std::string("1")
+                        : std::string(CHAR(STRING_ELT(ini_, 0)));
 
   if (center) {
       if (npc >= n) {
@@ -159,8 +167,14 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
       SEXP lam_in = PROTECT(Rf_allocVector(REALSXP, 1)); nprot++;
       REAL(lam_in)[0] = lambda;
 
-      // Initialize alpha using Ridge (Approximate due to non-orthogonal subset U)
-      SEXP alpha0_ = PROTECT(ridge_call(Y_in, U_in, D2_in, lam_in)); nprot++;
+      // Initialise alpha (LASSO by default; ridge if ini="2"). LASSO matches the
+      // Python default and yields identical α₀ between R and Python.
+      SEXP alpha0_;
+      if (ini == "2") {
+          alpha0_ = PROTECT(ridge_call(Y_in, U_in, D2_in, lam_in)); nprot++;
+      } else {
+          alpha0_ = PROTECT(fast_pchal_call(U_in, D2_in, Y_in, lam_in)); nprot++;
+      }
 
       // PC-GHAL on train
       SEXP ENn_in  = PROTECT(Rf_allocMatrix(REALSXP, Rf_nrows(V_sexp), final_npc)); nprot++;
@@ -234,7 +248,12 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
   SEXP lam_full = PROTECT(Rf_allocVector(REALSXP, 1)); prot++;
   REAL(lam_full)[0] = best_lambda;
 
-  SEXP alpha_full = PROTECT(ridge_call(Y_full, U_fit, D2_fit, lam_full)); prot++;
+  SEXP alpha_full;
+  if (ini == "2") {
+      alpha_full = PROTECT(ridge_call(Y_full, U_fit, D2_fit, lam_full)); prot++;
+  } else {
+      alpha_full = PROTECT(fast_pchal_call(U_fit, D2_fit, Y_full, lam_full)); prot++;
+  }
 
   SEXP ENn_full = PROTECT(Rf_allocMatrix(REALSXP, Rf_nrows(V_sexp), final_npc)); prot++;
   std::copy(E_Nn.data(), E_Nn.data() + Rf_nrows(V_sexp) * final_npc, REAL(ENn_full));

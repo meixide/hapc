@@ -5,7 +5,6 @@ from setuptools.command.build_ext import build_ext
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 class CMakeExtension(Extension):
@@ -30,8 +29,16 @@ class CMakeBuild(build_ext):
         if not extdir.endswith(os.path.sep):
             extdir += os.path.sep
 
+        # Pass the *current* Python interpreter to CMake's modern Python3 finder
+        # (FindPython3 ignores legacy PYTHON_EXECUTABLE; it requires
+        # Python3_EXECUTABLE).  This prevents CMake from picking up a system
+        # interpreter (e.g. Python 3.12) when pip itself runs under a different
+        # version, which would produce a wheel tagged for the wrong ABI and
+        # fail at install time.
         cmake_args = ['-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=' + extdir,
-                      '-DPYTHON_EXECUTABLE=' + sys.executable]
+                      '-DPYTHON_EXECUTABLE=' + sys.executable,
+                      '-DPython3_EXECUTABLE=' + sys.executable,
+                      '-DPython_EXECUTABLE=' + sys.executable]
 
         cfg = 'Debug' if self.debug else 'Release'
         build_args = ['--config', cfg]
@@ -50,6 +57,41 @@ class CMakeBuild(build_ext):
             os.makedirs(self.build_temp)
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=self.build_temp, env=env)
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp)
+        
+        # Verify the extension was built
+        ext_fullpath = self.get_ext_fullpath(ext.name)
+        if not os.path.exists(ext_fullpath):
+            # Try to find it in the build directory
+            import glob
+            build_dir = Path(self.build_temp)
+            possible_locations = [
+                ext_fullpath,
+                build_dir / 'Release' / Path(ext_fullpath).name,
+                build_dir / 'Debug' / Path(ext_fullpath).name,
+                build_dir / Path(ext_fullpath).name,
+            ]
+            # Also search for any .pyd/.so/.dylib files with hapc_core in the name
+            for pattern in ['hapc_core*.pyd', 'hapc_core*.so', 'hapc_core*.dylib']:
+                matches = list(build_dir.rglob(pattern))
+                possible_locations.extend(matches)
+            
+            found = None
+            for loc in possible_locations:
+                if Path(loc).exists():
+                    found = Path(loc)
+                    break
+            
+            if found:
+                import shutil
+                target_dir = Path(ext_fullpath).parent
+                target_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(found, ext_fullpath)
+                print(f"Found and copied extension: {found} -> {ext_fullpath}")
+            else:
+                raise RuntimeError(
+                    f"Extension {ext.name} was not built. Expected at {ext_fullpath}\n"
+                    f"Searched in: {possible_locations}"
+                )
 
 # Try to read version, fallback to default
 version = "0.1.0"
@@ -83,11 +125,8 @@ setup(
     ext_modules=[CMakeExtension('hapc/hapc_core', sourcedir=os.path.dirname(os.path.abspath(__file__)))],
     cmdclass=dict(build_ext=CMakeBuild),
     python_requires=">=3.8",
-    install_requires=[
-        "numpy>=1.24,<2.3",
-        "scipy>=1.7",
-        "scikit-learn>=0.24",
-    ],
+    # Runtime dependencies live in pyproject.toml (PEP-621) — don't duplicate them
+    # here, otherwise we trigger the "install_requires overwritten" setuptools warning.
     include_package_data=True,
     zip_safe=False,
 )

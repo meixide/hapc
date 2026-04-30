@@ -5,6 +5,7 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <vector>
 
 static inline double sign_double(double x) {
     return (x > 0) ? 1.0 : ((x < 0) ? -1.0 : 0.0);
@@ -68,6 +69,11 @@ OptimizerOutput pcghal_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
     }
     
     int iter_done = 0;
+    // Track last 100 iterations: store (alpha, g_tan_norm) pairs
+    const int lookback_window = 100;
+    std::vector<std::pair<VectorXd, double>> recent_iterations;
+    recent_iterations.reserve(lookback_window);
+    
     for (int iter = 1; iter <= max_iter; ++iter) {
         g = grad(alpha);
         if (!g.allFinite()) throw std::runtime_error("Non-finite gradient");
@@ -87,21 +93,30 @@ OptimizerOutput pcghal_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
         }
         g_tan = g - proj;
         
+        double g_tan_norm = g_tan.norm();
+        
         gt_alpha = g_tan.array() * alpha.array();
         numer.noalias() = ENn * gt_alpha;
         
-        std::vector<double> valid;
+        // Step size selection rule: δ < 1 / max_j |h*(j)|
+        // where h*(j) = Σ_m h(m)α(m)E(j,m) / β(α)(j) = numer[j] / beta[j]
+        double max_abs_hstar = 0.0;
         for (int i = 0; i < q; ++i) {
             if (std::abs(beta[i]) > eps) {
-                double restr = numer[i] / beta[i];
-                if (restr < 0.0) valid.push_back(-1.0 / restr);
+                // Compute h*(j) = numer[j] / beta[j]
+                double hstar_j = numer[i] / beta[i];
+                double abs_hstar_j = std::abs(hstar_j);
+                if (abs_hstar_j > max_abs_hstar) {
+                    max_abs_hstar = abs_hstar_j;
+                }
             }
         }
         
+        // Step size: δ = step_factor * (1 / max_j |h*(j)|)
+        // This ensures δ < 1 / max_j |h*(j)| when step_factor < 1
         double step = 0.0;
-        if (!valid.empty()) {
-            double min_val = *std::min_element(valid.begin(), valid.end());
-            step = step_factor * min_val;
+        if (max_abs_hstar > eps) {
+            step = step_factor / max_abs_hstar;
         }
         if (!std::isfinite(step) || std::abs(step) > 1e6) step = 0.0;
         
@@ -110,13 +125,19 @@ OptimizerOutput pcghal_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
         
         if (verbose) {
             std::cout << "Iter " << iter << " | step=" << step << "  Risk=" << R_new 
-                      << "  ||g_tan||=" << g_tan.norm() << std::endl;
+                      << "  ||g_tan||=" << g_tan_norm << std::endl;
         }
+        
+        // Store this iteration in the lookback window (keep only last 100)
+        if (recent_iterations.size() >= lookback_window) {
+            recent_iterations.erase(recent_iterations.begin());
+        }
+        recent_iterations.push_back(std::make_pair(alpha_new, g_tan_norm));
         
         alphaiters.row(iter) = alpha_new.transpose();
         iter_done = iter;
         
-        if (!std::isfinite(R_new) || g_tan.norm() < tol) {
+        if (!std::isfinite(R_new) || g_tan_norm < tol) {
             alpha = alpha_new;
             R_old = R_new;
             break;
@@ -124,6 +145,20 @@ OptimizerOutput pcghal_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
         
         alpha = alpha_new;
         R_old = R_new;
+    }
+    
+    // Select best solution from last 100 iterations (lowest ||g_tan||)
+    if (!recent_iterations.empty()) {
+        auto best_iter = std::min_element(recent_iterations.begin(), recent_iterations.end(),
+            [](const std::pair<VectorXd, double>& a, const std::pair<VectorXd, double>& b) {
+                return a.second < b.second;
+            });
+        alpha = best_iter->first;
+        R_old = risk(alpha);
+        if (verbose) {
+            std::cout << "\n[Best solution] Selected from last " << recent_iterations.size() 
+                      << " iterations: ||g_tan||=" << best_iter->second << std::endl;
+        }
     }
     
     VectorXd beta_final = ENn * alpha;

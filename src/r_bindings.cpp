@@ -12,6 +12,7 @@
 #endif
 
 #include <R_ext/Print.h>
+#include <cmath>
 #include "hapc_core.hpp"
 
 using Eigen::Map;
@@ -231,10 +232,14 @@ extern "C" SEXP fast_pchal_call(SEXP U_, SEXP D2_, SEXP Y_, SEXP lambda_) {
 }
 
 // Wrapper: single_pcghal_call (called by hapc.R)
+//
+// Initialiser is selectable via the ``ini`` argument (string "1" = LASSO via
+// fast_pchal_call, "2" = ridge via ridge_call). Default is "1" (LASSO) so that
+// R and Python ``hapc(norm="sv")`` are bit-identical by default.
 extern "C" SEXP single_pcghal_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
                                    SEXP single_lambda_, SEXP max_iter_, SEXP tol_, 
                                    SEXP step_factor_, SEXP verbose_, SEXP crit_,
-                                   SEXP predict_, SEXP center_) {
+                                   SEXP predict_, SEXP center_, SEXP ini_) {
     if (!Rf_isReal(X_)) Rf_error("X must be numeric");
     if (!Rf_isReal(Y_)) Rf_error("Y must be numeric");
     
@@ -249,15 +254,15 @@ extern "C" SEXP single_pcghal_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
     bool verbose = LOGICAL(verbose_)[0];
     std::string crit = CHAR(STRING_ELT(crit_, 0));
     bool center = Rf_isLogical(center_) ? LOGICAL(center_)[0] : true;
+    std::string ini = (Rf_isNull(ini_) || !Rf_isString(ini_))
+                          ? std::string("1")
+                          : std::string(CHAR(STRING_ELT(ini_, 0)));
     
     Map<const MatrixXd> X(REAL(X_), n, p);
     Map<const VectorXd> Y(REAL(Y_), n);
     
     // Design matrix
     DesignOutput des = pchal_des(X, maxdeg, npc, center);
-    int final_npc = des.d.size();
-    
-    // Prepare data
     MatrixXd Xtilde = des.U * des.d.asDiagonal();
     MatrixXd ENn = des.V;
     
@@ -268,9 +273,15 @@ extern "C" SEXP single_pcghal_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
         Y_fit = Y.array() - ymean;
     }
     
-    // Ridge initialization
+    // Initialiser: LASSO (default) or ridge
     VectorXd D2 = des.d.array().square();
-    VectorXd alpha0 = ridge_call(Y_fit, des.U, D2, lambda);
+    VectorXd alpha0;
+    if (ini == "2") {
+        alpha0 = ridge_call(Y_fit, des.U, D2, lambda);
+    } else {
+        // "1" or anything else falls back to LASSO (matches Python default)
+        alpha0 = fast_pchal_call(des.U, D2, Y_fit, lambda);
+    }
     
     // Optimize
     OptimizerOutput res_opt = pcghal_call(Y_fit, Xtilde, ENn, alpha0, 
@@ -289,37 +300,124 @@ extern "C" SEXP single_pcghal_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
     REAL(risk)[0] = res_opt.risk;
     INTEGER(iter)[0] = res_opt.iter;
     
-    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, 0));
+    int prot = 5;  // alpha_out, alphaiters, beta, risk, iter
+    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, 0)); prot++;
     if (!Rf_isNull(predict_) && Rf_nrows(predict_) > 0) {
         const int m_pred = Rf_nrows(predict_);
         Map<const MatrixXd> Xtest(REAL(predict_), m_pred, p);
         MatrixXd Ktest = kernel_cross_call(X, Xtest, maxdeg, center);
-        
+
         VectorXd d_inv = des.d.array().cwiseInverse();
         VectorXd v = des.U * (d_inv.asDiagonal() * res_opt.alpha);
         VectorXd preds = Ktest * v;
-        
+
         if (center) {
             preds.array() += ymean;
         }
-        
-        predictions = PROTECT(Rf_allocVector(REALSXP, m_pred));
+
+        predictions = PROTECT(Rf_allocVector(REALSXP, m_pred)); prot++;
         std::copy(preds.data(), preds.data() + m_pred, REAL(predictions));
     }
-    
-    SEXP out = PROTECT(Rf_allocVector(VECSXP, 4));
+
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, 4)); prot++;
     SET_VECTOR_ELT(out, 0, alpha_out);
     SET_VECTOR_ELT(out, 1, alphaiters);
     SET_VECTOR_ELT(out, 2, beta);
     SET_VECTOR_ELT(out, 3, predictions);
-    
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4)); prot++;
     SET_STRING_ELT(names, 0, Rf_mkChar("alpha"));
     SET_STRING_ELT(names, 1, Rf_mkChar("alphaiters"));
     SET_STRING_ELT(names, 2, Rf_mkChar("beta"));
     SET_STRING_ELT(names, 3, Rf_mkChar("predictions"));
     Rf_setAttrib(out, R_NamesSymbol, names);
-    
-    UNPROTECT(9);
+
+    UNPROTECT(prot);
+    return out;
+}
+
+// Binomial + norm="2": logistic ridge initialiser only (no PGD). Mirrors Python
+// `single_pcghal_classification_ridge_only`.
+extern "C" SEXP single_pcghal_classi_ridge_call(SEXP X_, SEXP Y_, SEXP maxdeg_,
+                                                SEXP npc_, SEXP lambda_,
+                                                SEXP predict_, SEXP center_) {
+    if (!Rf_isReal(X_) || !Rf_isReal(Y_)) Rf_error("X and Y must be numeric");
+    const int n = Rf_nrows(X_);
+    const int p = Rf_ncols(X_);
+    if (Rf_length(Y_) != n) Rf_error("length(Y) must equal nrow(X).");
+    Map<const MatrixXd> X(REAL(X_), n, p);
+    Map<const VectorXd> Y01(REAL(Y_), n);
+    for (int i = 0; i < n; ++i) {
+        if (Y01[i] != 0.0 && Y01[i] != 1.0) Rf_error("Y must contain only 0 and 1");
+    }
+    int maxdeg = Rf_isInteger(maxdeg_) ? INTEGER(maxdeg_)[0] : (int)REAL(maxdeg_)[0];
+    int npc = Rf_isInteger(npc_) ? INTEGER(npc_)[0] : (int)REAL(npc_)[0];
+    double lambda = REAL(lambda_)[0];
+    bool center = LOGICAL(center_)[0];
+
+    if (center) {
+        if (npc >= n) npc = n - 1;
+    } else {
+        if (npc > n) npc = n;
+    }
+
+    DesignOutput des = pchal_des(X, maxdeg, npc, center);
+    const int final_npc = (int)des.d.size();
+    MatrixXd Xtilde = des.U * des.d.asDiagonal();
+
+    VectorXd Y_pm1(n);
+    for (int i = 0; i < n; ++i) Y_pm1[i] = (Y01[i] == 1.0) ? 1.0 : -1.0;
+
+    VectorXd alpha = logistic_ridge_init(Y_pm1, Xtilde, lambda);
+
+    VectorXd eta = Xtilde * alpha;
+    double risk = 0.0;
+    for (int i = 0; i < n; ++i) {
+        double ymu = Y_pm1[i] * eta[i];
+        if (ymu > 0)
+            risk += std::log1p(std::exp(-ymu));
+        else
+            risk += -ymu + std::log1p(std::exp(ymu));
+    }
+    risk /= n;
+
+    int prot = 0;
+    SEXP alpha_sexp = PROTECT(Rf_allocVector(REALSXP, final_npc)); prot++;
+    std::copy(alpha.data(), alpha.data() + final_npc, REAL(alpha_sexp));
+
+    SEXP predictions = PROTECT(Rf_allocVector(REALSXP, 0)); prot++;
+    if (!Rf_isNull(predict_) && Rf_nrows(predict_) > 0) {
+        const int m_pred = Rf_nrows(predict_);
+        Map<const MatrixXd> Xtest(REAL(predict_), m_pred, p);
+        MatrixXd Ktest = kernel_cross_call(X, Xtest, maxdeg, center);
+        VectorXd d_inv = des.d.array().cwiseInverse();
+        VectorXd v = des.U * (d_inv.asDiagonal() * alpha);
+        VectorXd log_odds = Ktest * v;
+        predictions = PROTECT(Rf_allocVector(REALSXP, m_pred)); prot++;
+        std::copy(log_odds.data(), log_odds.data() + m_pred, REAL(predictions));
+    }
+
+    SEXP risk_sexp = PROTECT(Rf_allocVector(REALSXP, 1)); prot++;
+    REAL(risk_sexp)[0] = risk;
+    SEXP iter_sexp = PROTECT(Rf_allocVector(INTSXP, 1)); prot++;
+    INTEGER(iter_sexp)[0] = 0;
+    SEXP lam_sexp = PROTECT(Rf_allocVector(REALSXP, 1)); prot++;
+    REAL(lam_sexp)[0] = lambda;
+
+    SEXP out = PROTECT(Rf_allocVector(VECSXP, 5)); prot++;
+    SET_VECTOR_ELT(out, 0, alpha_sexp);
+    SET_VECTOR_ELT(out, 1, predictions);
+    SET_VECTOR_ELT(out, 2, risk_sexp);
+    SET_VECTOR_ELT(out, 3, iter_sexp);
+    SET_VECTOR_ELT(out, 4, lam_sexp);
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 5)); prot++;
+    SET_STRING_ELT(names, 0, Rf_mkChar("alpha"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("predictions"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("risk"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("iter"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("lambda"));
+    Rf_setAttrib(out, R_NamesSymbol, names);
+
+    UNPROTECT(prot);
     return out;
 }

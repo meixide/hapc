@@ -1,4 +1,19 @@
 #' Demo: spectrum plot (does not run at package load)
+#'
+#' Compares empirical left singular vectors from \code{\link{design.hapc}} to a
+#' closed-form sine basis on a sorted uniform design (one dimension).
+#'
+#' @param outfile If non-\code{NULL}, save the six-panel figure to this path
+#'   (PNG).
+#'
+#' @return Invisibly, a list with \code{H}, \code{U}, \code{d}, \code{V} from
+#'   \code{design.hapc}.
+#'
+#' @examples
+#' \dontrun{
+#' spectrum_demo()
+#' }
+#'
 #' @export
 spectrum_demo <- function(outfile = NULL) {
   set.seed(1)

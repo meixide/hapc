@@ -113,10 +113,8 @@ extern "C" SEXP single_lambda_pchar(SEXP X_, SEXP Y_, SEXP npc_,
   VectorXd D2(npc);
   
   if (approx) {
-    Rprintf("Using approximate eigendecomposition (power iteration)\n");
     power_iteration_top_k(K, npc, U, D2);
   } else {
-    Rprintf("Using exact eigendecomposition\n");
     Eigen::SelfAdjointEigenSolver<MatrixXd> eigensolver(K);
     if (eigensolver.info() != Eigen::Success) {
       Rf_error("Eigendecomposition failed");
@@ -163,18 +161,9 @@ extern "C" SEXP single_lambda_pchar(SEXP X_, SEXP Y_, SEXP npc_,
   // Call appropriate solver based on l1 flag
   SEXP res_opt;
   if (l1) {
-    Rprintf("Using L1 penalty (LASSO)\n");
     res_opt = PROTECT(fast_pchal_call(U_sexp, D2_sexp, Y_target, lambda_)); prot++;
   } else {
-    Rprintf("Using L2 penalty (Ridge)\n");
     res_opt = PROTECT(ridge_call(Y_target, U_sexp, D2_sexp, lambda_)); prot++;
-    // print alpha for debugging
-    Rprintf("Alpha from ridge_call:\n");
-    for (int i = 0; i < npc; ++i) {
-
-        Rprintf("%f ", REAL(res_opt)[i]);
-    }
-    Rprintf("\n");  
   }
 
   // Predictions (if needed)

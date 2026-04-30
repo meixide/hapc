@@ -6,6 +6,9 @@
 #include <cmath>
 #include <algorithm>
 
+using Eigen::Map;
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
 
 extern "C" SEXP logistic_call(SEXP Y_, SEXP X_, SEXP lambda_) {
     // 1. Check dimensions and input types
@@ -69,14 +72,7 @@ extern "C" SEXP logistic_call(SEXP Y_, SEXP X_, SEXP lambda_) {
         
         // Check convergence
         double change = (beta - beta_old).norm();
-        if (change < tol) {
-            Rprintf("Converged in %d iterations\n", iter + 1);
-            break;
-        }
-        
-        if (iter == max_iter - 1) {
-            Rprintf("Warning: Maximum iterations reached without convergence\n");
-        }
+        if (change < tol) break;
     }
     
     // 6. Allocate and populate output

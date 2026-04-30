@@ -52,7 +52,7 @@ SinglePcghalOutput single_pcghal_fit(const MatrixXd& X, const VectorXd& Y,
                                      const MatrixXd& predict_data,
                                      int max_iter, double tol, double step_factor,
                                      bool verbose, const std::string& crit,
-                                     bool center, bool approx);
+                                     bool center, bool approx, const std::string& ini);
 
 // Cross-validation output structure for Python
 struct CVOutput {
@@ -69,7 +69,7 @@ CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
                        int nfolds, const MatrixXd& predict_data,
                        int max_iter, double tol, double step_factor,
                        bool verbose, const std::string& crit,
-                       bool center, bool approx);
+                       bool center, bool approx, const std::string& ini);
 
 // CV output structure for Python
 struct FastCVOutput {
@@ -85,5 +85,35 @@ FastCVOutput fasthal_cv_python(const MatrixXd& X, const VectorXd& Y, int npc,
                                 const std::vector<double>& lambdas, int nfolds,
                                 const MatrixXd& predict, int maxdeg,
                                 bool center, bool approx, bool l1);
+
+// Pure C++ Newton-Raphson logistic ridge initializer.
+// Y must contain values in {-1, +1}. lambda is the *unscaled* penalty
+// (internally multiplied by n, matching logistic_call).
+VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double lambda);
+
+// Cross-validation output for binomial (logistic) HAPC.
+struct CVClassiOutput {
+    std::vector<double> deviances;
+    std::vector<double> lambdas;
+    double best_lambda;
+    VectorXd best_alpha;
+    VectorXd predictions;          // predicted probabilities on `predict`
+};
+
+// Python-friendly binomial CV (mirrors R `pchal_cv_classi_call`).
+// Y must contain only 0 or 1 values.
+//
+// When `with_pgd == true` (default): per fold runs logistic-ridge initialiser
+// followed by projected gradient descent on logistic loss (norm="sv").
+// When `with_pgd == false`: per fold runs only the logistic-ridge initialiser
+// (norm="2"; logistic ridge in the PC basis), then evaluates logistic deviance
+// on the held-out fold. Folds and risk are *always* logistic; no MSE on Y.
+CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
+                                        int maxdeg, int npc,
+                                        const std::vector<double>& lambdas,
+                                        int nfolds, const MatrixXd& predict_data,
+                                        int max_iter, double tol, double step_factor,
+                                        bool verbose, bool center,
+                                        bool with_pgd = true);
 
 #endif

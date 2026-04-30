@@ -4,7 +4,7 @@
 
 #include <cmath>
 #include <algorithm>
-
+#include <iostream>
 
 // Pure C++ core (shared by R and Python)
 #include "hapc_core.hpp"
@@ -23,10 +23,16 @@ VectorXd fast_pchal_call(const MatrixXd& U, const VectorXd& D2, const VectorXd& 
     VectorXd sqrtD = D2.array().sqrt();
 
     VectorXd beta(p);
+    const double eps = 1e-12;
     for (int j = 0; j < p; ++j) {
-        double threshold = lambda * n / sqrtD[j];
-        double val = std::abs(UTy[j]) - threshold;
-        beta[j] = (val > 0 ? std::copysign(val / sqrtD[j], UTy[j]) : 0.0);
+        if (sqrtD[j] < eps) {
+            // If eigenvalue is zero or very small, set coefficient to zero
+            beta[j] = 0.0;
+        } else {
+            double threshold = lambda * n / sqrtD[j];
+            double val = std::abs(UTy[j]) - threshold;
+            beta[j] = (val > 0 ? std::copysign(val / sqrtD[j], UTy[j]) : 0.0);
+        }
     }
 
     return beta;
