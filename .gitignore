@@ -33,6 +33,9 @@ cmake_build/
 .DS_Store
 Thumbs.db
 
+# Local experiments
+tests
+
 # R
 .Rhistory
 .RData

@@ -66,6 +66,38 @@ VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double la
     return beta;
 }
 
+static double calibrate_logistic_intercept(const VectorXd& Y01,
+                                           const VectorXd& eta) {
+    const int n = (int)Y01.size();
+    if (eta.size() != n) {
+        throw std::runtime_error("calibrate_logistic_intercept: length mismatch");
+    }
+    double b0 = 0.0;
+    for (int it = 0; it < 50; ++it) {
+        const VectorXd z = eta.array() + b0;
+        const VectorXd p = (1.0 + (-z.array()).exp()).inverse();
+        const double g = (p - Y01).sum();
+        const double h = (p.array() * (1.0 - p.array())).sum();
+        if (std::abs(g) < 1e-10 || h < 1e-12) break;
+        b0 -= g / h;
+    }
+    return b0;
+}
+
+static double logistic_risk_pm1(const VectorXd& Y_pm1, const VectorXd& eta) {
+    const int n = (int)Y_pm1.size();
+    if (eta.size() != n) {
+        throw std::runtime_error("logistic_risk_pm1: length mismatch");
+    }
+    double risk = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double ymu = Y_pm1[i] * eta[i];
+        risk += (ymu > 0) ? std::log1p(std::exp(-ymu))
+                          : -ymu + std::log1p(std::exp(ymu));
+    }
+    return risk / n;
+}
+
 // ---------------------------------------------------------------------------
 // Build the Eigen-friendly "Xtilde = U_top * diag(d_top)" representation,
 // returning final_npc (which may be capped by the design rank).
@@ -112,25 +144,24 @@ static OptimizerOutput logistic_full_fit(const VectorXd& Y_pm1,
                                           double step_factor, bool verbose,
                                           bool with_pgd) {
     VectorXd alpha0 = logistic_ridge_init(Y_pm1, Xtilde, lambda);
-    if (with_pgd) {
-        return pcghal_classi_call(Y_pm1, Xtilde, E_Nn, alpha0,
-                                  max_iter, tol, step_factor, verbose);
-    }
-    // Logistic-ridge-only path: assemble the same OptimizerOutput shape with
-    // logistic training risk evaluated on (Y_pm1, Xtilde, alpha0).
     const int n = Xtilde.rows();
-    VectorXd eta = Xtilde * alpha0;
-    double risk = 0.0;
-    for (int i = 0; i < n; ++i) {
-        const double ymu = Y_pm1[i] * eta[i];
-        risk += (ymu > 0) ? std::log1p(std::exp(-ymu))
-                          : -ymu + std::log1p(std::exp(ymu));
+    VectorXd alpha_fit;
+    if (with_pgd) {
+        OptimizerOutput out = pcghal_classi_call(Y_pm1, Xtilde, E_Nn, alpha0,
+                                                 max_iter, tol, step_factor, verbose);
+        alpha_fit = out.alpha;
+    } else {
+        alpha_fit = alpha0;  // logistic ridge only (norm="2")
     }
-    risk /= n;
+    VectorXd Y01(n);
+    for (int i = 0; i < n; ++i) Y01[i] = (Y_pm1[i] > 0.0) ? 1.0 : 0.0;
+    VectorXd eta = Xtilde * alpha_fit;
+    const double b0 = calibrate_logistic_intercept(Y01, eta);
+    const double risk = logistic_risk_pm1(Y_pm1, eta.array() + b0);
     OptimizerOutput out;
-    out.alpha = alpha0;
-    out.alphaiters = MatrixXd::Zero(0, alpha0.size());
-    out.beta = E_Nn * alpha0;
+    out.alpha = alpha_fit;
+    out.alphaiters = MatrixXd::Zero(0, alpha_fit.size());
+    out.beta = E_Nn * alpha_fit;
     out.risk = risk;
     out.iter = 0;
     return out;
@@ -199,7 +230,11 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
             MatrixXd Ktest = kernel_cross_call(X, predict_data, maxdeg, center);
             VectorXd d_inv = d_top.cwiseInverse();
             VectorXd v = U_top * (d_inv.asDiagonal() * best_alpha);
-            VectorXd eta_pred = Ktest * v;
+            VectorXd eta_full = Xtilde * best_alpha;
+            VectorXd Y01_full(n);
+            for (int i = 0; i < n; ++i) Y01_full[i] = Y[i];
+            const double b0_full = calibrate_logistic_intercept(Y01_full, eta_full);
+            VectorXd eta_pred = (Ktest * v).array() + b0_full;
             predictions = (1.0 + (-eta_pred.array()).exp()).inverse();
         }
         CVClassiOutput out;
@@ -251,7 +286,11 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
                 alpha_fold = alpha0;  // logistic ridge only (norm="2")
             }
 
-            VectorXd eta = Xte * alpha_fold;
+            VectorXd eta_tr = Xtr * alpha_fold;
+            VectorXd Ytr01(ntr);
+            for (int i = 0; i < ntr; ++i) Ytr01[i] = (Ytr_pm1[i] > 0.0) ? 1.0 : 0.0;
+            const double b0_fold = calibrate_logistic_intercept(Ytr01, eta_tr);
+            VectorXd eta = (Xte * alpha_fold).array() + b0_fold;
             VectorXd probs = (1.0 + (-eta.array()).exp()).inverse();
             double dev = 0.0;
             for (int i = 0; i < nte; ++i) {
@@ -298,7 +337,11 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
         MatrixXd Ktest = kernel_cross_call(X, predict_data, maxdeg, center);
         VectorXd d_inv = d_top.cwiseInverse();
         VectorXd v = U_top * (d_inv.asDiagonal() * full_out.alpha);
-        VectorXd eta_pred = Ktest * v;
+        VectorXd eta_full = Xtilde * full_out.alpha;
+        VectorXd Y01_full(n);
+        for (int i = 0; i < n; ++i) Y01_full[i] = Y[i];
+        const double b0_full = calibrate_logistic_intercept(Y01_full, eta_full);
+        VectorXd eta_pred = (Ktest * v).array() + b0_full;
         predictions = (1.0 + (-eta_pred.array()).exp()).inverse();
     }
 

@@ -368,12 +368,25 @@ extern "C" SEXP single_pcghal_classi_ridge_call(SEXP X_, SEXP Y_, SEXP maxdeg_,
     VectorXd Y_pm1(n);
     for (int i = 0; i < n; ++i) Y_pm1[i] = (Y01[i] == 1.0) ? 1.0 : -1.0;
 
-    VectorXd alpha = logistic_ridge_init(Y_pm1, Xtilde, lambda);
+    auto calibrate_b0 = [](const VectorXd& y01, const VectorXd& eta) {
+        double b0 = 0.0;
+        for (int it = 0; it < 50; ++it) {
+            VectorXd z = eta.array() + b0;
+            VectorXd p = (1.0 + (-z.array()).exp()).inverse();
+            double g = (p - y01).sum();
+            double h = (p.array() * (1.0 - p.array())).sum();
+            if (std::abs(g) < 1e-10 || h < 1e-12) break;
+            b0 -= g / h;
+        }
+        return b0;
+    };
 
+    VectorXd alpha = logistic_ridge_init(Y_pm1, Xtilde, lambda);
     VectorXd eta = Xtilde * alpha;
+    const double b0 = calibrate_b0(Y01, eta);
     double risk = 0.0;
     for (int i = 0; i < n; ++i) {
-        double ymu = Y_pm1[i] * eta[i];
+        double ymu = Y_pm1[i] * (eta[i] + b0);
         if (ymu > 0)
             risk += std::log1p(std::exp(-ymu));
         else
@@ -392,7 +405,7 @@ extern "C" SEXP single_pcghal_classi_ridge_call(SEXP X_, SEXP Y_, SEXP maxdeg_,
         MatrixXd Ktest = kernel_cross_call(X, Xtest, maxdeg, center);
         VectorXd d_inv = des.d.array().cwiseInverse();
         VectorXd v = des.U * (d_inv.asDiagonal() * alpha);
-        VectorXd log_odds = Ktest * v;
+        VectorXd log_odds = (Ktest * v).array() + b0;
         predictions = PROTECT(Rf_allocVector(REALSXP, m_pred)); prot++;
         std::copy(log_odds.data(), log_odds.data() + m_pred, REAL(predictions));
     }

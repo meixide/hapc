@@ -21,6 +21,19 @@ NULL
   }
   if (!(lambda > 0)) stop("lambda must be > 0 for logistic LASSO.")
 
+  .calibrate_intercept <- function(y01, eta) {
+    b0 <- 0
+    for (it in seq_len(50)) {
+      z <- eta + b0
+      p <- 1 / (1 + exp(-z))
+      g <- sum(p - y01)
+      h <- sum(p * (1 - p))
+      if (abs(g) < 1e-10 || h < 1e-12) break
+      b0 <- b0 - g / h
+    }
+    b0
+  }
+
   des <- design.hapc(X, max_degree = max_degree, npcs = npcs, center = center)
   k <- length(des$d)
   Xtilde <- des$U[, seq_len(k), drop = FALSE] %*% diag(des$d[seq_len(k)],
@@ -36,9 +49,10 @@ NULL
     standardize = FALSE
   )
   alpha <- as.numeric(fit$beta)
+  b0 <- .calibrate_intercept(Y_01, as.numeric(Xtilde %*% alpha))
 
   Y_pm1 <- ifelse(Y_01 == 1, 1, -1)
-  eta <- as.numeric(Xtilde %*% alpha)
+  eta <- as.numeric(Xtilde %*% alpha + b0)
   ymu <- Y_pm1 * eta
   risk <- mean(ifelse(ymu > 0,
                       log1p(exp(-ymu)),
@@ -52,7 +66,7 @@ NULL
                                center = center)
     v <- des$U[, seq_len(k), drop = FALSE] %*%
          ((1 / (des$d[seq_len(k)] + 1e-12)) * alpha)
-    log_odds <- as.numeric(Ktest %*% v)
+    log_odds <- as.numeric(Ktest %*% v + b0)
     predictions <- log_odds
     probabilities <- 1 / (1 + exp(-log_odds))
     predicted_classes <- ifelse(probabilities > 0.5, 1, -1)

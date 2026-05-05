@@ -16,9 +16,9 @@ Provides :func:`ate_hapc`, a high-level convenience wrapper that:
    which ``|mean(EIF)| ≤ σ / (√n · log n)``.  This is the **undersmoothed**
    outcome model.  If no λ in the grid meets the threshold, the smallest λ
    is used.
-5. Returns the plug-in ATE point estimate at the undersmoothed model and a
-   ``(1 - alpha)`` Wald confidence interval based on the σ of the EIF at
-   that undersmoothed model.
+5. Returns a **doubly robust** ATE point estimate at the undersmoothed outcome
+   model and a ``(1 - alpha)`` Wald confidence interval from the EIF evaluated
+   at that estimate (see Notes).
 
 The function does not implement sample splitting / cross-fitting:
 nuisances are fit on the full sample and the EIF is evaluated on the same
@@ -47,8 +47,9 @@ class ATEResult(NamedTuple):
     Attributes
     ----------
     estimate : float
-        Plug-in ATE at the undersmoothed outcome model:
-        ``mean(μ̂_1(W) - μ̂_0(W))``.
+        Doubly robust (AIPW-style) ATE at the undersmoothed outcome model:
+        ``mean(A/π̂·(Y-μ̂₁)+μ̂₁ - (1-A)/(1-π̂)·(Y-μ̂₀) - μ̂₀)``, matching the
+        efficient influence function used for the Wald interval (see Notes).
     lower : float
         Lower endpoint of the ``(1 - alpha)`` Wald confidence interval.
     upper : float
@@ -228,15 +229,25 @@ def ate_hapc(X: np.ndarray, Y: np.ndarray, A: np.ndarray,
        specified).
     2. Fix the propensity at its CV-best λ; refit on the full sample to
        obtain ``π̂(W_i) = P(A=1 | W_i)``.
-    3. At the CV-best outcome λ, compute the ATE EIF
-       ``φ̂_diff = φ̂_1 - φ̂_0`` and let ``σ = std(φ̂_diff)``.
+    3. At the CV-best outcome λ, compute a **plugin-centered** influence vector
+       (same mean as the DR EIF at :math:`\\psi=\\overline{\\mu}_1-\\overline{\\mu}_0`)
+       and let ``σ = std(·)``.
     4. Threshold ``τ = σ / (√n · log n)``.
     5. Walk the **outcome** λ grid in **decreasing**
        order; pick the first (largest) λ for which
        ``|mean(EIF_diff)| ≤ τ`` — call it ``λ_u``.
-    6. Plug-in estimate: ``ψ̂ = mean(μ̂_1(W; λ_u) - μ̂_0(W; λ_u))``.
-       CI: ``ψ̂ ± z_{1 - α/2} · σ_u / √n`` where ``σ_u = std(EIF_diff)``
-       at ``λ_u``.
+    6. **Doubly robust** point estimate (same nuisances ``(π̂, μ̂₁, μ̂₀)``):
+       ``ψ̂ = mean(A/π̂·(Y-μ̂₁)+μ̂₁ - (1-A)/(1-π̂)·(Y-μ̂₀) - μ̂₀)``.
+       One-step influence function (centered at ``ψ̂``):
+       ``φ_i = A_i/π̂_i·(Y_i-μ̂_{1i}) + μ̂_{1i} - (1-A_i)/(1-π̂_i)·(Y_i-μ̂_{0i})
+       - μ̂_{0i} - ψ̂``.
+       CI: ``ψ̂ ± z_{1-α/2} · std(φ) / √n``.
+
+       This contrasts with **plug-in** G-computation ``mean(μ̂₁(W)-μ̂₀(W))``,
+       which can be materially biased when both nuisances are estimated on the
+       same sample and the outcome regressions are regularized.  The DR
+       ``ψ̂`` is consistent if **either** the propensity **or** the pair
+       ``(μ̂₁, μ̂₀)`` is correctly specified (standard double robustness).
 
     Examples
     --------
@@ -329,38 +340,60 @@ def ate_hapc(X: np.ndarray, Y: np.ndarray, A: np.ndarray,
             )
         return p[:n], p[n:]
 
-    def _eif_diff(mu1: np.ndarray, mu0: np.ndarray) -> np.ndarray:
+    def _eif_plugin_centered(mu1: np.ndarray, mu0: np.ndarray) -> np.ndarray:
+        """Plugin-centered influence vector (undersmoothing gate only).
+
+        Its mean matches the DR EIF evaluated at plug-in
+        :math:`\\psi=\\overline{\\mu}_1-\\overline{\\mu}_0`. The returned ATE
+        uses ``_psi_dr`` / ``_eif_dr`` instead.
+        """
         eif1 = (A01 / pi1) * (Y - mu1) - (mu1 - mu1.mean())
         eif0 = ((1.0 - A01) / (1.0 - pi1)) * (Y - mu0) - (mu0 - mu0.mean())
         return eif1 - eif0
 
+    def _psi_dr(mu1: np.ndarray, mu0: np.ndarray) -> float:
+        return float(
+            np.mean(
+                (A01 / pi1) * (Y - mu1)
+                + mu1
+                - ((1.0 - A01) / (1.0 - pi1)) * (Y - mu0)
+                - mu0
+            )
+        )
+
+    def _eif_dr(mu1: np.ndarray, mu0: np.ndarray, psi: float) -> np.ndarray:
+        return (
+            (A01 / pi1) * (Y - mu1)
+            + mu1
+            - ((1.0 - A01) / (1.0 - pi1)) * (Y - mu0)
+            - mu0
+            - psi
+        )
+
     # --- 3. σ at CV configuration → threshold τ ----------------------------
     mu1_cv, mu0_cv = _mu_pair(lam_out_cv)
-    eif_cv = _eif_diff(mu1_cv, mu0_cv)
+    eif_cv = _eif_plugin_centered(mu1_cv, mu0_cv)
     sigma_cv = float(np.std(eif_cv, ddof=0))
     threshold = sigma_cv / (np.sqrt(n) * np.log(n))
 
     # --- 4. Undersmoothing sweep: largest λ → smallest --------------------
     lam_und: Optional[float] = None
-    eif_und: Optional[np.ndarray] = None
     mu1_und = mu0_und = None
     for lam in np.sort(lambdas_out)[::-1]:
         try:
             mu1, mu0 = _mu_pair(float(lam))
         except Exception:
             continue
-        eif = _eif_diff(mu1, mu0)
+        eif = _eif_plugin_centered(mu1, mu0)
         if abs(eif.mean()) <= threshold:
             lam_und = float(lam)
             mu1_und, mu0_und = mu1, mu0
-            eif_und = eif
             break
 
-    if eif_und is None:
+    if lam_und is None:
         # Threshold never met → fall back to the smallest λ in the grid.
         lam_und = float(lambdas_out.min())
         mu1_und, mu0_und = _mu_pair(lam_und)
-        eif_und = _eif_diff(mu1_und, mu0_und)
 
     if plot_diagnostics:
         t_lams: list[float] = []
@@ -370,7 +403,7 @@ def ate_hapc(X: np.ndarray, Y: np.ndarray, A: np.ndarray,
                 mu1, mu0 = _mu_pair(float(lam))
             except Exception:
                 continue
-            eif = _eif_diff(mu1, mu0)
+            eif = _eif_plugin_centered(mu1, mu0)
             t_lams.append(float(lam))
             t_abs.append(float(np.abs(eif.mean())))
         _plot_ate_diagnostics(
@@ -379,9 +412,10 @@ def ate_hapc(X: np.ndarray, Y: np.ndarray, A: np.ndarray,
             lam_prop_cv, lam_out_cv, lam_und, threshold,
         )
 
-    # --- 5. Point estimate + (1 - alpha) Wald CI --------------------------
-    psi = float(np.mean(mu1_und - mu0_und))
-    sigma_und = float(np.std(eif_und, ddof=0))
+    # --- 5. Doubly robust point estimate + (1 - alpha) Wald CI --------------
+    psi = _psi_dr(mu1_und, mu0_und)
+    eif_dr = _eif_dr(mu1_und, mu0_und, psi)
+    sigma_und = float(np.std(eif_dr, ddof=0))
     z = float(_normal.ppf(1.0 - alpha / 2.0))
     half = z * sigma_und / np.sqrt(n)
 

@@ -8,7 +8,7 @@ can be regenerated from the package root::
 This uses ``alpha=0.05`` with the **moderate** DGP from the original
 ``ate/simulate_data.py`` script (vendored below — exact same draws thanks to
 ``np.random.seed`` + the same ``np.random.uniform`` / ``normal`` /
-``binomial`` call order):
+``binomial`` call order).  ``ate_hapc`` is run with ``npcs = n - 1``.
 
 * ``W1 ~ Uniform(-2, 2)``
 * ``W2 ~ Normal(0, 0.5)``
@@ -37,7 +37,6 @@ DEMO_SEED = 456
 DEMO_N = 300
 DEMO_ALPHA = 0.05
 DEMO_MAX_DEGREE = 2
-DEMO_NPCS = 40
 DEMO_NFOLDS = 4
 DEMO_NORM = "1"
 
@@ -51,10 +50,10 @@ GRID_LENGTH_OUT = 8
 
 FIGURE_NAME = "ate_hapc_diagnostics_demo.png"
 
-# Pinned outputs (``alpha=0.05``, current C++/Python stack)
-_EXPECTED_ESTIMATE = 0.09213745592304026
-_EXPECTED_LOWER = -0.03604174118365536
-_EXPECTED_UPPER = 0.22031665302973588
+# Pinned outputs (``alpha=0.05``, ``npcs = n - 1``, current C++/Python stack)
+_EXPECTED_ESTIMATE = 0.07963839541495547
+_EXPECTED_LOWER = -0.048798044399148574
+_EXPECTED_UPPER = 0.2080748352290595
 
 
 def _expit(x: np.ndarray) -> np.ndarray:
@@ -104,17 +103,22 @@ def run_ate_hapc_demo(
     *,
     plot_diagnostics: bool = False,
 ) -> "ATEResult":
-    """Run ``ate_hapc`` with the pinned demo hyperparameters."""
+    """Run ``ate_hapc`` with the pinned demo hyperparameters.
+
+    Uses ``npcs = n - 1`` (sample size from ``load_demo_data``) for both
+    propensity and outcome stages, matching the usual HAL rank cap.
+    """
     from hapc import ate_hapc
 
     W, A, Y = load_demo_data()
+    npcs = int(W.shape[0]) - 1
     return ate_hapc(
         W,
         Y,
         A,
         alpha=DEMO_ALPHA,
         max_degree=DEMO_MAX_DEGREE,
-        npcs=DEMO_NPCS,
+        npcs=npcs,
         log_lambda_prop_min=LOG_LAMBDA_PROP_MIN,
         log_lambda_prop_max=LOG_LAMBDA_PROP_MAX,
         grid_length_prop=GRID_LENGTH_PROP,
