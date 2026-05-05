@@ -95,6 +95,24 @@ def _to_pm1(Y: np.ndarray, *, verbose: bool = False) -> np.ndarray:
     )
 
 
+def _calibrate_logistic_intercept(y01: np.ndarray, eta: np.ndarray) -> float:
+    """Newton calibration for intercept with fixed linear predictor ``eta``."""
+    y01 = np.asarray(y01, dtype=np.float64).ravel()
+    eta = np.asarray(eta, dtype=np.float64).ravel()
+    if y01.shape != eta.shape:
+        raise ValueError("y01 and eta must have the same shape")
+    b0 = 0.0
+    for _ in range(50):
+        z = eta + b0
+        p = 1.0 / (1.0 + np.exp(-z))
+        g = float(np.sum(p - y01))
+        h = float(np.sum(p * (1.0 - p)))
+        if abs(g) < 1e-10 or h < 1e-12:
+            break
+        b0 -= g / h
+    return float(b0)
+
+
 # ---------------------------------------------------------------------------
 # Single λ — gaussian, norm in {"1", "2"} (closed-form)
 # ---------------------------------------------------------------------------
@@ -299,6 +317,14 @@ def single_pcghal_classification(
     res = pcghal_classification(Y_pm1, Xtilde, ENn, alpha0,
                                 max_iter=max_iter, tol=tol,
                                 step_factor=step_factor, verbose=verbose)
+    y01 = (Y_pm1 > 0).astype(np.float64)
+    eta_train = Xtilde @ np.asarray(res.alpha).ravel()
+    b0 = _calibrate_logistic_intercept(y01, eta_train)
+    ymu = Y_pm1 * (eta_train + b0)
+    risk = float(
+        np.where(ymu > 0, np.log1p(np.exp(-ymu)), -ymu + np.log1p(np.exp(ymu)))
+        .mean()
+    )
 
     predictions = probabilities = predicted_classes = None
     if predict is not None:
@@ -307,7 +333,7 @@ def single_pcghal_classification(
             raise ValueError(f"predict must have {p} columns")
         Ktest = cross_kernel_hapc(X, Xte, max_degree, center=center)
         v = des.U[:, :final_npc] @ ((1.0 / (des.d[:final_npc] + 1e-12)) * res.alpha)
-        log_odds = Ktest @ v
+        log_odds = Ktest @ v + b0
         predictions = log_odds
         probabilities = 1.0 / (1.0 + np.exp(-log_odds))
         predicted_classes = np.where(probabilities > 0.5, 1.0, -1.0)
@@ -315,7 +341,7 @@ def single_pcghal_classification(
     return SinglePcghalClassificationResult(
         alpha=res.alpha, predictions=predictions,
         probabilities=probabilities, predicted_classes=predicted_classes,
-        lambda_=float(lambda_), risk=res.risk, iter=res.iter,
+        lambda_=float(lambda_), risk=risk, iter=res.iter,
     )
 
 
@@ -352,7 +378,9 @@ def single_pcghal_classification_ridge_only(
     ).ravel()
 
     eta = Xtilde @ alpha
-    ymu = Y_pm1 * eta
+    y01 = (Y_pm1 > 0).astype(np.float64)
+    b0 = _calibrate_logistic_intercept(y01, eta)
+    ymu = Y_pm1 * (eta + b0)
     risk = float(
         np.where(ymu > 0, np.log1p(np.exp(-ymu)), -ymu + np.log1p(np.exp(ymu)))
         .mean()
@@ -365,7 +393,7 @@ def single_pcghal_classification_ridge_only(
             raise ValueError(f"predict must have {p} columns")
         Ktest = cross_kernel_hapc(X, Xte, max_degree, center=center)
         v = des.U[:, :final_npc] @ ((1.0 / (des.d[:final_npc] + 1e-12)) * alpha)
-        log_odds = Ktest @ v
+        log_odds = Ktest @ v + b0
         predictions = log_odds
         probabilities = 1.0 / (1.0 + np.exp(-log_odds))
         predicted_classes = np.where(probabilities > 0.5, 1.0, -1.0)
@@ -478,8 +506,9 @@ def single_pcghal_classification_lasso(
         model = LogisticRegression(penalty="l1", **common_kw)
         model.fit(_C(Xtilde), Y_01)
     alpha = np.asarray(model.coef_, dtype=np.float64).ravel()
+    b0 = _calibrate_logistic_intercept(Y_01.astype(np.float64), Xtilde @ alpha)
 
-    eta = Xtilde @ alpha
+    eta = Xtilde @ alpha + b0
     ymu = Y_pm1 * eta
     risk = float(
         np.where(ymu > 0, np.log1p(np.exp(-ymu)), -ymu + np.log1p(np.exp(ymu))).mean()
@@ -492,7 +521,7 @@ def single_pcghal_classification_lasso(
             raise ValueError(f"predict must have {p} columns")
         Ktest = cross_kernel_hapc(X, Xte, max_degree, center=center)
         v = des.U[:, :final_npc] @ ((1.0 / (des.d[:final_npc] + 1e-12)) * alpha)
-        log_odds = Ktest @ v
+        log_odds = Ktest @ v + b0
         predictions = log_odds
         probabilities = 1.0 / (1.0 + np.exp(-log_odds))
         predicted_classes = np.where(probabilities > 0.5, 1.0, -1.0)
