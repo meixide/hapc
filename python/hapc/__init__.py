@@ -19,7 +19,7 @@ Lower-level building blocks:
 - :func:`ate_hapc` — ATE estimate + Wald CI via HAPC + outcome undersmoothing.
 """
 
-__version__ = "2.0.2"
+__version__ = "2.1.0"
 
 from .core import (
     DesignOutput,
