@@ -347,8 +347,11 @@ extern "C" SEXP single_pcghal_classi_ridge_call(SEXP X_, SEXP Y_, SEXP maxdeg_,
     if (Rf_length(Y_) != n) Rf_error("length(Y) must equal nrow(X).");
     Map<const MatrixXd> X(REAL(X_), n, p);
     Map<const VectorXd> Y01(REAL(Y_), n);
+    // Y must lie in [0,1]: hard {0,1} labels or soft EM-HAL posteriors. The
+    // logistic-ridge fit (norm="2") supports both.
     for (int i = 0; i < n; ++i) {
-        if (Y01[i] != 0.0 && Y01[i] != 1.0) Rf_error("Y must contain only 0 and 1");
+        if (Y01[i] < -1e-12 || Y01[i] > 1.0 + 1e-12)
+            Rf_error("Y must be in [0,1]");
     }
     int maxdeg = Rf_isInteger(maxdeg_) ? INTEGER(maxdeg_)[0] : (int)REAL(maxdeg_)[0];
     int npc = Rf_isInteger(npc_) ? INTEGER(npc_)[0] : (int)REAL(npc_)[0];
@@ -365,9 +368,6 @@ extern "C" SEXP single_pcghal_classi_ridge_call(SEXP X_, SEXP Y_, SEXP maxdeg_,
     const int final_npc = (int)des.d.size();
     MatrixXd Xtilde = des.U * des.d.asDiagonal();
 
-    VectorXd Y_pm1(n);
-    for (int i = 0; i < n; ++i) Y_pm1[i] = (Y01[i] == 1.0) ? 1.0 : -1.0;
-
     auto calibrate_b0 = [](const VectorXd& y01, const VectorXd& eta) {
         double b0 = 0.0;
         for (int it = 0; it < 50; ++it) {
@@ -381,16 +381,15 @@ extern "C" SEXP single_pcghal_classi_ridge_call(SEXP X_, SEXP Y_, SEXP maxdeg_,
         return b0;
     };
 
-    VectorXd alpha = logistic_ridge_init(Y_pm1, Xtilde, lambda);
+    VectorXd alpha = logistic_ridge_init_y01(Y01, Xtilde, lambda);
     VectorXd eta = Xtilde * alpha;
     const double b0 = calibrate_b0(Y01, eta);
+    // Soft cross-entropy risk (equals the {-1,+1} logistic risk on hard labels).
     double risk = 0.0;
     for (int i = 0; i < n; ++i) {
-        double ymu = Y_pm1[i] * (eta[i] + b0);
-        if (ymu > 0)
-            risk += std::log1p(std::exp(-ymu));
-        else
-            risk += -ymu + std::log1p(std::exp(ymu));
+        const double pi = 1.0 / (1.0 + std::exp(-(eta[i] + b0)));
+        const double pp = std::min(1.0 - 1e-15, std::max(1e-15, pi));
+        risk += -(Y01[i] * std::log(pp) + (1.0 - Y01[i]) * std::log(1.0 - pp));
     }
     risk /= n;
 

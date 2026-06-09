@@ -28,22 +28,21 @@
 // rule `beta := delta_beta` (i.e. solving the full normal equation each
 // iteration, treating the IRLS working response as the regression target).
 // ---------------------------------------------------------------------------
-VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double lambda) {
+// Soft-label logistic ridge.  The target `y01` may take any value in [0, 1]:
+// hard {0,1} labels or fractional EM-HAL E-step posteriors.  The IRLS update
+// is unchanged; fractional targets are standard for cross-entropy
+// minimisation, so on hard {0,1} inputs the result is bit-identical to the
+// former {-1,+1} implementation.
+VectorXd logistic_ridge_init_y01(const VectorXd& y01, const MatrixXd& X, double lambda) {
     const int n = X.rows();
     const int p = X.cols();
-    if (Y_pm1.size() != n) {
+    if (y01.size() != n) {
         throw std::runtime_error("logistic_ridge_init: Y length must match nrow(X).");
     }
     // Match logistic_call: lambda is multiplied by n internally.
     const double lam = lambda * n;
     const int max_iter = 100;
     const double tol = 1e-8;
-
-    // logistic_call expects Y in {-1,+1} but treats it via the GLM update with
-    // the {0,1} working response.  We replicate that behaviour exactly: convert
-    // back to a {0,1} response y01 = (Y_pm1 + 1) / 2 to compute mu/working z.
-    VectorXd y01(n);
-    for (int i = 0; i < n; ++i) y01[i] = (Y_pm1[i] > 0) ? 1.0 : 0.0;
 
     VectorXd beta = VectorXd::Zero(p);
     for (int iter = 0; iter < max_iter; ++iter) {
@@ -66,6 +65,15 @@ VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double la
     return beta;
 }
 
+// Backward-compatible wrapper: accepts Y in {-1,+1} and converts to {0,1}.
+// Used by the PGD (norm="sv") single-fit path, which is hard-label only.
+VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double lambda) {
+    const int n = X.rows();
+    VectorXd y01(n);
+    for (int i = 0; i < n; ++i) y01[i] = (Y_pm1[i] > 0) ? 1.0 : 0.0;
+    return logistic_ridge_init_y01(y01, X, lambda);
+}
+
 static double calibrate_logistic_intercept(const VectorXd& Y01,
                                            const VectorXd& eta) {
     const int n = (int)Y01.size();
@@ -84,16 +92,20 @@ static double calibrate_logistic_intercept(const VectorXd& Y01,
     return b0;
 }
 
-static double logistic_risk_pm1(const VectorXd& Y_pm1, const VectorXd& eta) {
-    const int n = (int)Y_pm1.size();
+// Soft cross-entropy risk for fractional targets y01 in [0,1], given a linear
+// predictor `eta` (intercept already folded in).  On hard {0,1} labels this
+// equals the former {-1,+1} logistic risk, so behaviour is unchanged on
+// binary inputs.
+static double logistic_risk_y01(const VectorXd& y01, const VectorXd& eta) {
+    const int n = (int)y01.size();
     if (eta.size() != n) {
-        throw std::runtime_error("logistic_risk_pm1: length mismatch");
+        throw std::runtime_error("logistic_risk_y01: length mismatch");
     }
     double risk = 0.0;
     for (int i = 0; i < n; ++i) {
-        const double ymu = Y_pm1[i] * eta[i];
-        risk += (ymu > 0) ? std::log1p(std::exp(-ymu))
-                          : -ymu + std::log1p(std::exp(ymu));
+        const double pi = 1.0 / (1.0 + std::exp(-eta[i]));
+        const double p = std::min(1.0 - 1e-15, std::max(1e-15, pi));
+        risk += -(y01[i] * std::log(p) + (1.0 - y01[i]) * std::log(1.0 - p));
     }
     return risk / n;
 }
@@ -136,28 +148,31 @@ static std::vector<int> make_folds(int n, int K) {
 // for the post-CV refit). When `with_pgd == false`, returns the logistic-ridge
 // initialiser α directly with its training logistic risk; otherwise runs the
 // PGD step on top of it (norm="sv").
-static OptimizerOutput logistic_full_fit(const VectorXd& Y_pm1,
+static OptimizerOutput logistic_full_fit(const VectorXd& Y01,
                                           const MatrixXd& Xtilde,
                                           const MatrixXd& E_Nn,
                                           double lambda,
                                           int max_iter, double tol,
                                           double step_factor, bool verbose,
                                           bool with_pgd) {
-    VectorXd alpha0 = logistic_ridge_init(Y_pm1, Xtilde, lambda);
+    VectorXd alpha0 = logistic_ridge_init_y01(Y01, Xtilde, lambda);
     const int n = Xtilde.rows();
     VectorXd alpha_fit;
     if (with_pgd) {
+        // PGD (norm="sv") uses the {-1,+1} logistic loss and is reached only
+        // for hard labels (soft labels are rejected upstream), so thresholding
+        // at 0.5 recovers the exact {-1,+1} encoding.
+        VectorXd Y_pm1(n);
+        for (int i = 0; i < n; ++i) Y_pm1[i] = (Y01[i] > 0.5) ? 1.0 : -1.0;
         OptimizerOutput out = pcghal_classi_call(Y_pm1, Xtilde, E_Nn, alpha0,
                                                  max_iter, tol, step_factor, verbose);
         alpha_fit = out.alpha;
     } else {
         alpha_fit = alpha0;  // logistic ridge only (norm="2")
     }
-    VectorXd Y01(n);
-    for (int i = 0; i < n; ++i) Y01[i] = (Y_pm1[i] > 0.0) ? 1.0 : 0.0;
     VectorXd eta = Xtilde * alpha_fit;
     const double b0 = calibrate_logistic_intercept(Y01, eta);
-    const double risk = logistic_risk_pm1(Y_pm1, eta.array() + b0);
+    const double risk = logistic_risk_y01(Y01, eta.array() + b0);
     OptimizerOutput out;
     out.alpha = alpha_fit;
     out.alphaiters = MatrixXd::Zero(0, alpha_fit.size());
@@ -177,10 +192,21 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
     const int n = X.rows();
     const int p = X.cols();
     if (Y.size() != n) throw std::runtime_error("pcghal_cv_classi: length(Y) != nrow(X)");
+    // Y must lie in [0,1]: hard {0,1} labels or soft EM-HAL posteriors. Soft
+    // labels (any value strictly inside (0,1)) are supported only for the
+    // logistic-ridge path (norm="2"); the PGD path (norm="sv", with_pgd=true)
+    // is not implemented for soft labels.
+    bool soft = false;
     for (int i = 0; i < n; ++i) {
-        if (Y[i] != 0.0 && Y[i] != 1.0) {
-            throw std::runtime_error("pcghal_cv_classi: Y must be 0/1");
+        if (Y[i] < -1e-12 || Y[i] > 1.0 + 1e-12) {
+            throw std::runtime_error("pcghal_cv_classi: Y must be in [0,1]");
         }
+        if (Y[i] > 1e-12 && Y[i] < 1.0 - 1e-12) soft = true;
+    }
+    if (soft && with_pgd) {
+        throw std::runtime_error(
+            "pcghal_cv_classi: soft labels (Y in (0,1)) are not implemented for "
+            "norm='sv'; use norm='1' or norm='2'.");
     }
     const int L = (int)lambdas.size();
     if (L <= 0) throw std::runtime_error("pcghal_cv_classi: lambdas must be non-empty");
@@ -198,9 +224,9 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
     const int final_npc = compute_classi_design(X, maxdeg, npc_eff, center,
                                                  Xtilde, E_Nn, U_top, d_top);
 
-    // Y in {-1,+1} for the optimiser
-    VectorXd Y_pm1(n);
-    for (int i = 0; i < n; ++i) Y_pm1[i] = (Y[i] == 1.0) ? 1.0 : -1.0;
+    // Soft target in [0,1] used throughout (the ridge/CE machinery works
+    // directly in this space; the PGD branch builds {-1,+1} locally).
+    const VectorXd& Y01 = Y;
 
     // Degenerate case: R `hapc(family="binomial", …)` passes nfolds=1 with a
     // single λ — there is no proper train/test split.  Fit on full data and
@@ -213,7 +239,7 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
         for (int j = 0; j < L; ++j) {
             const double lam = lambdas[j];
             OptimizerOutput full_out = logistic_full_fit(
-                Y_pm1, Xtilde, E_Nn, lam, max_iter, tol, step_factor,
+                Y01, Xtilde, E_Nn, lam, max_iter, tol, step_factor,
                 verbose, with_pgd);
             deviances[j] = full_out.risk;
             if (full_out.risk < best_val) {
@@ -265,19 +291,22 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
             if (ntr == 0 || nte == 0) continue;
 
             MatrixXd Xtr(ntr, final_npc), Xte(nte, final_npc);
-            VectorXd Ytr_pm1(ntr), Yte01(nte);
+            VectorXd Ytr01(ntr), Yte01(nte);
             for (int i = 0; i < ntr; ++i) {
                 Xtr.row(i) = Xtilde.row(tr_idx[i]);
-                Ytr_pm1[i] = Y_pm1[tr_idx[i]];
+                Ytr01[i] = Y01[tr_idx[i]];
             }
             for (int i = 0; i < nte; ++i) {
                 Xte.row(i) = Xtilde.row(te_idx[i]);
-                Yte01[i] = Y[te_idx[i]];
+                Yte01[i] = Y01[te_idx[i]];
             }
 
-            VectorXd alpha0 = logistic_ridge_init(Ytr_pm1, Xtr, lambda);
+            VectorXd alpha0 = logistic_ridge_init_y01(Ytr01, Xtr, lambda);
             VectorXd alpha_fold;
             if (with_pgd) {
+                // Hard-label only path (soft labels rejected upstream).
+                VectorXd Ytr_pm1(ntr);
+                for (int i = 0; i < ntr; ++i) Ytr_pm1[i] = (Ytr01[i] > 0.5) ? 1.0 : -1.0;
                 OptimizerOutput out = pcghal_classi_call(Ytr_pm1, Xtr, E_Nn, alpha0,
                                                           max_iter, tol, step_factor,
                                                           verbose);
@@ -287,15 +316,13 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
             }
 
             VectorXd eta_tr = Xtr * alpha_fold;
-            VectorXd Ytr01(ntr);
-            for (int i = 0; i < ntr; ++i) Ytr01[i] = (Ytr_pm1[i] > 0.0) ? 1.0 : 0.0;
             const double b0_fold = calibrate_logistic_intercept(Ytr01, eta_tr);
             VectorXd eta = (Xte * alpha_fold).array() + b0_fold;
             VectorXd probs = (1.0 + (-eta.array()).exp()).inverse();
             double dev = 0.0;
             for (int i = 0; i < nte; ++i) {
                 double pi = std::max(1e-15, std::min(1.0 - 1e-15, probs[i]));
-                dev += (Yte01[i] == 1.0) ? -std::log(pi) : -std::log(1.0 - pi);
+                dev += -(Yte01[i] * std::log(pi) + (1.0 - Yte01[i]) * std::log(1.0 - pi));
             }
             fold_error(k - 1, j) = dev / nte;
         }
@@ -325,7 +352,7 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
 
     // Refit on full data at best_lambda (logistic ridge ± PGD).
     OptimizerOutput full_out = logistic_full_fit(
-        Y_pm1, Xtilde, E_Nn, best_lambda,
+        Y01, Xtilde, E_Nn, best_lambda,
         max_iter, tol, step_factor, verbose, with_pgd);
 
     // Predict on `predict_data` if supplied (else empty vector).

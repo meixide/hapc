@@ -18,7 +18,11 @@ import numpy as np
 
 from . import hapc_core
 from .core import _C, cross_kernel_hapc, design_hapc
-from .single import single_pcghal_classification_lasso
+from .single import (
+    _check_binomial_labels,
+    _to_soft01,
+    single_pcghal_classification_lasso,
+)
 
 
 class CVResult(NamedTuple):
@@ -376,6 +380,9 @@ def pcghal_cv_classi_lasso(X: np.ndarray, Y: np.ndarray,
     if not np.all(lams > 0):
         raise ValueError("All lambdas must be > 0 for logistic LASSO.")
 
+    # Soft target in [0,1] used for the held-out cross-entropy deviance
+    # (accepts hard {0,1}/{-1,+1} or fractional EM-HAL posteriors).
+    q = _to_soft01(Y)
     folds = _native_folds(n, int(nfolds))
     L = lams.size
     fold_dev = np.full((int(nfolds), L), np.nan)
@@ -386,7 +393,7 @@ def pcghal_cv_classi_lasso(X: np.ndarray, Y: np.ndarray,
         if te.size == 0 or tr.size == 0:
             continue
         Xtr, Ytr = X[tr], Y[tr]
-        Xte, Yte = X[te], Y[te]
+        Xte, Yte = X[te], q[te]
 
         for j, lam in enumerate(lams):
             res = single_pcghal_classification_lasso(
@@ -395,9 +402,7 @@ def pcghal_cv_classi_lasso(X: np.ndarray, Y: np.ndarray,
                 verbose=bool(verbose), max_iter=int(max_iter),
             )
             probs = np.clip(res.probabilities, 1e-15, 1 - 1e-15)
-            yte01 = (Yte == 1).astype(np.float64) if set(np.unique(Yte).tolist()).issubset({0.0, 1.0}) \
-                else (Yte > 0).astype(np.float64)
-            dev = -(yte01 * np.log(probs) + (1 - yte01) * np.log(1 - probs))
+            dev = -(Yte * np.log(probs) + (1 - Yte) * np.log(1 - probs))
             fold_dev[k - 1, j] = float(dev.mean())
 
     deviances = np.nanmean(fold_dev, axis=0)
@@ -500,6 +505,8 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
     lams = _grid(None, log_lambda_min, log_lambda_max, grid_length)
 
     if family == "binomial":
+        # Validate labels; allow soft labels in [0,1] only for norm in {"1","2"}.
+        _check_binomial_labels(Y, norm)
         if norm in {"sv", "2"}:
             return pcghal_cv_classi(
                 X, Y, max_degree=max_degree, npcs=npcs,

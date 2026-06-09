@@ -12,6 +12,39 @@
 #' @noRd
 NULL
 
+# --- internal: classify a binomial response vector --------------------------
+# Returns one of:
+#   "01"   hard labels in {0,1}
+#   "pm1"  hard labels in {-1,+1}
+#   "soft" fractional labels in [0,1] (e.g. EM-HAL E-step posteriors)
+# Errors if any value falls outside [0,1] and the set is not exactly {-1,+1}.
+.hapc_binary_label_kind <- function(Y) {
+  Y <- as.numeric(Y)
+  u <- unique(Y[!is.na(Y)])
+  if (all(u %in% c(0, 1))) return("01")
+  if (setequal(u, c(-1, 1))) return("pm1")
+  if (all(u >= 0 & u <= 1)) return("soft")
+  stop("family='binomial' requires Y in {0,1}, {-1,+1}, or soft labels in ",
+       "[0,1]; found values outside [0,1].", call. = FALSE)
+}
+
+# --- internal: validate labels + enforce the soft-label norm restriction ----
+# Soft labels are supported only for norm in {"1","2"}; norm="sv" is rejected.
+# A warning is emitted whenever soft (non-binary) labels are detected.
+.hapc_check_binomial_labels <- function(Y, norm) {
+  kind <- .hapc_binary_label_kind(Y)
+  if (kind == "soft") {
+    if (identical(norm, "sv")) {
+      stop("Soft labels (Y in (0,1)) are not implemented for norm='sv'; ",
+           "use norm='1' or norm='2'.", call. = FALSE)
+    }
+    warning("Non-binary labels detected in Y: treating them as soft labels ",
+            "in [0,1] (cross-entropy target). Supported only for norm='1' ",
+            "and norm='2'.", call. = FALSE)
+  }
+  invisible(kind)
+}
+
 # --- internal: glmnet single-λ logistic LASSO on Xtilde = U %*% diag(d) -----
 .hapc_binomial_lasso <- function(X, Y, max_degree, npcs, lambda,
                                  predict = NULL, center = TRUE) {
@@ -39,9 +72,16 @@ NULL
   Xtilde <- des$U[, seq_len(k), drop = FALSE] %*% diag(des$d[seq_len(k)],
                                                        nrow = k, ncol = k)
 
-  Y_01 <- as.numeric(Y > 0)  # accepts {0,1} or {-1,+1}
+  # Map the response to a soft target in [0,1]: {0,1} -> as is, {-1,+1} ->
+  # (Y+1)/2, fractional soft labels pass through unchanged.
+  kind <- .hapc_binary_label_kind(Y)
+  Y_soft <- if (kind == "pm1") (as.numeric(Y) + 1) / 2 else as.numeric(Y)
+
+  # glmnet's two-column response form (failures, successes) accepts fractional
+  # "counts", so cbind(1 - q, q) encodes the soft cross-entropy target. On
+  # hard {0,1} labels this reduces to the ordinary Bernoulli fit.
   fit <- glmnet::glmnet(
-    x = Xtilde, y = Y_01,
+    x = Xtilde, y = cbind(1 - Y_soft, Y_soft),
     family = "binomial",
     alpha = 1,
     lambda = lambda,
@@ -49,14 +89,11 @@ NULL
     standardize = FALSE
   )
   alpha <- as.numeric(fit$beta)
-  b0 <- .calibrate_intercept(Y_01, as.numeric(Xtilde %*% alpha))
+  b0 <- .calibrate_intercept(Y_soft, as.numeric(Xtilde %*% alpha))
 
-  Y_pm1 <- ifelse(Y_01 == 1, 1, -1)
   eta <- as.numeric(Xtilde %*% alpha + b0)
-  ymu <- Y_pm1 * eta
-  risk <- mean(ifelse(ymu > 0,
-                      log1p(exp(-ymu)),
-                      -ymu + log1p(exp(ymu))))
+  p <- pmin(pmax(1 / (1 + exp(-eta)), 1e-15), 1 - 1e-15)
+  risk <- mean(-(Y_soft * log(p) + (1 - Y_soft) * log(1 - p)))
 
   predictions <- NULL
   probabilities <- NULL
@@ -104,7 +141,9 @@ NULL
   set.seed(fold_seed)
   folds <- sample(folds)
 
-  Y_01 <- as.numeric(Y > 0)
+  # Soft target in [0,1] used for the held-out cross-entropy deviance.
+  kind <- .hapc_binary_label_kind(Y)
+  Y_soft <- if (kind == "pm1") (as.numeric(Y) + 1) / 2 else as.numeric(Y)
   fold_dev <- matrix(NA_real_, nrow = nfolds, ncol = L)
 
   for (k in seq_len(nfolds)) {
@@ -112,7 +151,7 @@ NULL
     tr <- which(folds != k)
     if (length(te) == 0L || length(tr) == 0L) next
     Xtr <- X[tr, , drop = FALSE]; Ytr <- Y[tr]
-    Xte <- X[te, , drop = FALSE]; Yte01 <- Y_01[te]
+    Xte <- X[te, , drop = FALSE]; Yte <- Y_soft[te]
 
     for (j in seq_len(L)) {
       fit <- .hapc_binomial_lasso(
@@ -120,7 +159,7 @@ NULL
         lambda = lambdas[j], predict = Xte, center = center
       )
       probs <- pmin(pmax(fit$probabilities, 1e-15), 1 - 1e-15)
-      dev <- ifelse(Yte01 == 1, -log(probs), -log(1 - probs))
+      dev <- -(Yte * log(probs) + (1 - Yte) * log(1 - probs))
       fold_dev[k, j] <- mean(dev)
     }
   }

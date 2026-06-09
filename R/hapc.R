@@ -13,7 +13,10 @@
 #'
 #' @param X Numeric matrix of features (rows = observations, cols = features).
 #' @param Y Numeric response vector of length \code{nrow(X)}. For
-#'   \code{family = "binomial"}, must contain only 0/1.
+#'   \code{family = "binomial"}: hard labels in \code{{0,1}} or \code{{-1,+1}},
+#'   or \emph{soft} labels in \code{[0,1]} (e.g. EM-HAL E-step posteriors).
+#'   Soft labels are supported only for \code{norm = "1"} or \code{"2"}
+#'   (cross-entropy target); \code{norm = "sv"} requires hard labels.
 #' @param family Character: \code{"gaussian"} (squared error, default) or
 #'   \code{"binomial"} (logistic loss).
 #' @param max_degree Integer; maximum interaction order for the HAL basis.
@@ -120,10 +123,14 @@ hapc <- function(X, Y,
   if (!is.null(predict)) predict <- matrix(predict, ncol = p)
 
   if (family == "binomial") {
+    # Validate labels; allow soft labels in [0,1] only for norm in {"1","2"}.
+    kind <- .hapc_check_binomial_labels(Y, norm)
+    # C++ sv/2 paths expect Y in [0,1]; map {-1,+1} -> {0,1} if needed.
+    Y_01 <- if (kind == "pm1") (as.numeric(Y) + 1) / 2 else as.numeric(Y)
     if (norm == "sv") {
       res <- .Call(
         "pchal_cv_classi_call",
-        X, Y,
+        X, Y_01,
         max_degree, npcs,
         as.numeric(lambda), 1L,
         max_iter, tol,
@@ -137,7 +144,7 @@ hapc <- function(X, Y,
     if (norm == "2") {
       res <- .Call(
         "single_pcghal_classi_ridge_call",
-        X, Y,
+        X, Y_01,
         max_degree, npcs,
         lambda,
         if (is.null(predict)) NULL else predict, center,
