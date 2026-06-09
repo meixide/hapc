@@ -101,10 +101,14 @@ cv.hapc <- function(X, Y,
   lambdas <- exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))
 
   if (family == "binomial") {
+    # Validate labels; allow soft labels in [0,1] only for norm in {"1","2"}.
+    kind <- .hapc_check_binomial_labels(Y, norm)
+    # C++ sv/2 paths expect Y in [0,1]; map {-1,+1} -> {0,1} if needed.
+    Y_01 <- if (kind == "pm1") (as.numeric(Y) + 1) / 2 else as.numeric(Y)
     if (norm == "sv") {
       return(.Call(
         "pchal_cv_classi_call",
-        X, Y, max_degree, npcs,
+        X, Y_01, max_degree, npcs,
         lambdas, nfolds,
         max_iter, tol, step_factor,
         verbose, as.character(crit),
@@ -116,7 +120,7 @@ cv.hapc <- function(X, Y,
     if (norm == "2") {
       return(.Call(
         "pchal_cv_classi_call",
-        X, Y, max_degree, npcs,
+        X, Y_01, max_degree, npcs,
         lambdas, nfolds,
         max_iter, tol, step_factor,
         verbose, as.character(crit),

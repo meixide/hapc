@@ -117,4 +117,9 @@ PYBIND11_MODULE(hapc_core, m) {
 
     m.def("logistic_ridge_init", &logistic_ridge_init,
           py::arg("Y"), py::arg("X"), py::arg("lambda"));
+
+    // Soft-label logistic ridge initialiser: target Y may be any value in
+    // [0,1] (hard {0,1} labels or fractional EM-HAL E-step posteriors).
+    m.def("logistic_ridge_init_y01", &logistic_ridge_init_y01,
+          py::arg("Y"), py::arg("X"), py::arg("lambda"));
 }

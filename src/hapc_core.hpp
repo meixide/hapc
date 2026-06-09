@@ -91,6 +91,11 @@ FastCVOutput fasthal_cv_python(const MatrixXd& X, const VectorXd& Y, int npc,
 // (internally multiplied by n, matching logistic_call).
 VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double lambda);
 
+// Soft-label variant: target `y01` may take any value in [0, 1] (hard {0,1}
+// labels or fractional EM-HAL E-step posteriors). On hard {0,1} inputs the
+// result is identical to logistic_ridge_init. lambda has the same scaling.
+VectorXd logistic_ridge_init_y01(const VectorXd& y01, const MatrixXd& X, double lambda);
+
 // Cross-validation output for binomial (logistic) HAPC.
 struct CVClassiOutput {
     std::vector<double> deviances;
@@ -101,7 +106,9 @@ struct CVClassiOutput {
 };
 
 // Python-friendly binomial CV (mirrors R `pchal_cv_classi_call`).
-// Y must contain only 0 or 1 values.
+// Y must lie in [0,1]: hard {0,1} labels or soft EM-HAL posteriors. Soft
+// labels are supported only when with_pgd == false (norm="2"); with_pgd ==
+// true (norm="sv") rejects soft labels.
 //
 // When `with_pgd == true` (default): per fold runs logistic-ridge initialiser
 // followed by projected gradient descent on logistic loss (norm="sv").

@@ -95,6 +95,61 @@ def _to_pm1(Y: np.ndarray, *, verbose: bool = False) -> np.ndarray:
     )
 
 
+def _label_kind(Y: np.ndarray) -> str:
+    """Classify a binomial response vector.
+
+    Returns ``"01"`` (hard labels in ``{0,1}``), ``"pm1"`` (hard labels in
+    ``{-1,+1}``), or ``"soft"`` (fractional labels in ``[0,1]``, e.g. EM-HAL
+    E-step posteriors). Raises ``ValueError`` if any value falls outside
+    ``[0,1]`` and the set is not exactly ``{-1,+1}``.
+    """
+    Y = np.asarray(Y, dtype=np.float64).ravel()
+    u = np.unique(Y[~np.isnan(Y)])
+    s = set(u.tolist())
+    if s.issubset({0.0, 1.0}):
+        return "01"
+    if s == {-1.0, 1.0}:
+        return "pm1"
+    if u.size and u.min() >= 0.0 and u.max() <= 1.0:
+        return "soft"
+    raise ValueError(
+        "family='binomial' requires Y in {0,1}, {-1,+1}, or soft labels in "
+        "[0,1]; found values outside [0,1]."
+    )
+
+
+def _to_soft01(Y: np.ndarray) -> np.ndarray:
+    """Map a binomial response to a soft cross-entropy target in ``[0,1]``."""
+    Y = np.asarray(Y, dtype=np.float64).ravel()
+    return (Y + 1.0) / 2.0 if _label_kind(Y) == "pm1" else Y
+
+
+def _check_binomial_labels(Y: np.ndarray, norm: str) -> str:
+    """Validate labels and enforce the soft-label norm restriction.
+
+    Soft labels (any value strictly inside ``(0,1)``) are supported only for
+    ``norm`` in ``{"1","2"}``; ``norm="sv"`` raises ``NotImplementedError``.
+    A warning is emitted whenever soft labels are detected. Returns the label
+    kind from :func:`_label_kind`.
+    """
+    import warnings
+
+    kind = _label_kind(Y)
+    if kind == "soft":
+        if norm == "sv":
+            raise NotImplementedError(
+                "Soft labels (Y in (0,1)) are not implemented for norm='sv'; "
+                "use norm='1' or norm='2'."
+            )
+        warnings.warn(
+            "Non-binary labels detected in Y: treating them as soft labels in "
+            "[0,1] (cross-entropy target). Supported only for norm='1' and "
+            "norm='2'.",
+            stacklevel=2,
+        )
+    return kind
+
+
 def _calibrate_logistic_intercept(y01: np.ndarray, eta: np.ndarray) -> float:
     """Newton calibration for intercept with fixed linear predictor ``eta``."""
     y01 = np.asarray(y01, dtype=np.float64).ravel()
@@ -367,24 +422,21 @@ def single_pcghal_classification_ridge_only(
     SinglePcghalClassificationResult
     """
     X, Y, n, p = _check_xy(X, Y)
-    Y_pm1 = _to_pm1(Y, verbose=verbose)
+    # Accept hard {0,1}/{-1,+1} or soft [0,1] labels (cross-entropy target).
+    y01 = _to_soft01(Y)
 
     des = design_hapc(X, max_degree, npcs, center=center)
     final_npc = des.d.shape[0]
     Xtilde = des.U[:, :final_npc] * des.d[:final_npc]
 
     alpha = np.asarray(
-        hapc_core.logistic_ridge_init(_C(Y_pm1), _C(Xtilde), float(lambda_))
+        hapc_core.logistic_ridge_init_y01(_C(y01), _C(Xtilde), float(lambda_))
     ).ravel()
 
     eta = Xtilde @ alpha
-    y01 = (Y_pm1 > 0).astype(np.float64)
     b0 = _calibrate_logistic_intercept(y01, eta)
-    ymu = Y_pm1 * (eta + b0)
-    risk = float(
-        np.where(ymu > 0, np.log1p(np.exp(-ymu)), -ymu + np.log1p(np.exp(ymu)))
-        .mean()
-    )
+    phat = np.clip(1.0 / (1.0 + np.exp(-(eta + b0))), 1e-15, 1 - 1e-15)
+    risk = float((-(y01 * np.log(phat) + (1 - y01) * np.log(1 - phat))).mean())
 
     predictions = probabilities = predicted_classes = None
     if predict is not None:
@@ -480,12 +532,25 @@ def single_pcghal_classification_lasso(
         raise ValueError(f"lambda_ must be > 0 for LASSO; got {lambda_}")
 
     X, Y, n, p = _check_xy(X, Y)
-    Y_pm1 = _to_pm1(Y, verbose=verbose)
-    Y_01 = (Y_pm1 > 0).astype(np.int64)
+    # Accept hard {0,1}/{-1,+1} or soft [0,1] labels (cross-entropy target).
+    q = _to_soft01(Y)
 
     des = design_hapc(X, max_degree, npcs, center=center)
     final_npc = des.d.shape[0]
     Xtilde = des.U[:, :final_npc] * des.d[:final_npc]
+
+    # For soft labels, replicate each row as a (label=1, weight=q) and
+    # (label=0, weight=1-q) pair so the sample-weighted logistic loss equals
+    # the soft cross-entropy. On hard labels this reduces to the plain fit.
+    is_soft = bool(np.any((q > 1e-12) & (q < 1.0 - 1e-12)))
+    if is_soft:
+        Xfit = _C(np.vstack([Xtilde, Xtilde]))
+        yfit = np.concatenate([np.ones(n), np.zeros(n)]).astype(np.int64)
+        wfit = np.concatenate([q, 1.0 - q]).astype(np.float64)
+    else:
+        Xfit = _C(Xtilde)
+        yfit = (q > 0.5).astype(np.int64)
+        wfit = None
 
     C = 1.0 / (n * float(lambda_))
     # sklearn>=1.8 deprecated penalty="l1" in favour of l1_ratio=1 with the
@@ -495,24 +560,28 @@ def single_pcghal_classification_lasso(
     sig_params = inspect.signature(LogisticRegression).parameters
     common_kw = dict(solver="liblinear", C=C, fit_intercept=False,
                      max_iter=int(max_iter))
+
+    def _fit(**ctor):
+        m = LogisticRegression(**ctor, **common_kw)
+        if wfit is None:
+            m.fit(Xfit, yfit)
+        else:
+            m.fit(Xfit, yfit, sample_weight=wfit)
+        return m
+
     if "l1_ratio" in sig_params and "penalty" in sig_params:
         try:
-            model = LogisticRegression(l1_ratio=1.0, **common_kw)
-            model.fit(_C(Xtilde), Y_01)
+            model = _fit(l1_ratio=1.0)
         except (TypeError, ValueError):
-            model = LogisticRegression(penalty="l1", **common_kw)
-            model.fit(_C(Xtilde), Y_01)
+            model = _fit(penalty="l1")
     else:  # pragma: no cover  (very old sklearn)
-        model = LogisticRegression(penalty="l1", **common_kw)
-        model.fit(_C(Xtilde), Y_01)
+        model = _fit(penalty="l1")
     alpha = np.asarray(model.coef_, dtype=np.float64).ravel()
-    b0 = _calibrate_logistic_intercept(Y_01.astype(np.float64), Xtilde @ alpha)
+    b0 = _calibrate_logistic_intercept(q, Xtilde @ alpha)
 
     eta = Xtilde @ alpha + b0
-    ymu = Y_pm1 * eta
-    risk = float(
-        np.where(ymu > 0, np.log1p(np.exp(-ymu)), -ymu + np.log1p(np.exp(ymu))).mean()
-    )
+    phat = np.clip(1.0 / (1.0 + np.exp(-eta)), 1e-15, 1 - 1e-15)
+    risk = float((-(q * np.log(phat) + (1 - q) * np.log(1 - phat))).mean())
 
     predictions = probabilities = predicted_classes = None
     if predict is not None:
@@ -560,8 +629,10 @@ def hapc(X: np.ndarray, Y: np.ndarray,
     X : np.ndarray, shape (n, p)
         Features.
     Y : np.ndarray, shape (n,)
-        Response. For ``family="binomial"`` must contain only ``{0,1}`` or
-        ``{-1,+1}``.
+        Response. For ``family="binomial"``: hard labels in ``{0,1}`` or
+        ``{-1,+1}``, or soft labels in ``[0,1]`` (e.g. EM-HAL E-step
+        posteriors). Soft labels are supported only for ``norm`` in
+        ``{"1","2"}``; ``norm="sv"`` requires hard labels.
     family : {"gaussian", "binomial"}, default "gaussian"
         Loss family.
     max_degree : int, default 1
@@ -617,6 +688,8 @@ def hapc(X: np.ndarray, Y: np.ndarray,
         npcs = int(X.shape[0])
 
     if family == "binomial":
+        # Validate labels; allow soft labels in [0,1] only for norm in {"1","2"}.
+        _check_binomial_labels(Y, norm)
         if norm == "sv":
             return single_pcghal_classification(
                 X, Y, max_degree, npcs, lambda_,
