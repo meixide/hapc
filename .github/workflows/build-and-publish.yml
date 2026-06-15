@@ -30,6 +30,16 @@ jobs:
       # same build is reproducible locally via `pipx run cibuildwheel`.
       - name: Build wheels
         uses: pypa/cibuildwheel@v2.23.3
+        env:
+          # The latest scipy (transitive via scikit-learn) has no manylinux2014
+          # wheel; without this the post-build smoke test compiles it from source
+          # (no OpenBLAS) and fails. Force scipy to install from a binary wheel.
+          # Scoped to scipy so it can't block building hapc itself from source.
+          # CIBW_ENVIRONMENT_PASS_LINUX forwards it into the manylinux container,
+          # where it must apply to the wheel-under-test install (not test-requires,
+          # which runs too late).
+          PIP_ONLY_BINARY: scipy
+          CIBW_ENVIRONMENT_PASS_LINUX: PIP_ONLY_BINARY
 
       - uses: actions/upload-artifact@v4
         with:
