@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.18)
 project(hapc)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -15,7 +15,13 @@ endif()
 # Python3_EXECUTABLE from setup.py so the build always targets the *same*
 # interpreter that pip is using.  Without this CMake may discover a newer/
 # older system Python and produce a .so tagged for the wrong ABI.
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+#
+# Use Development.Module (headers only), NOT the full Development component:
+# the latter also requires Development.Embed -> libpython, which manylinux
+# images deliberately do not ship (extension modules must not link libpython).
+# Requiring full Development makes the manylinux build fail with
+# "Could NOT find Python3 (missing: Python3_LIBRARIES Development.Embed)".
+find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 message(STATUS "Python3_EXECUTABLE: ${Python3_EXECUTABLE}")
 message(STATUS "Python3_VERSION: ${Python3_VERSION}")
 
