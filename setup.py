@@ -3,6 +3,7 @@
 from setuptools import setup, find_packages, Extension
 from setuptools.command.build_ext import build_ext
 import os
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -44,6 +45,15 @@ class CMakeBuild(build_ext):
         build_args = ['--config', cfg]
 
         cmake_args += ['-DCMAKE_BUILD_TYPE=' + cfg]
+
+        # Honour the conventional CMAKE_ARGS env var (set by cibuildwheel/conda).
+        # Used to force universal2 macOS builds via
+        # CMAKE_ARGS="-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64", which CMake cannot
+        # infer from the (single-arch) build interpreter on its own.
+        extra_cmake_args = os.environ.get('CMAKE_ARGS')
+        if extra_cmake_args:
+            cmake_args += shlex.split(extra_cmake_args)
+
         # Add parallel build flag only on non-Windows platforms
         # On Windows, MSBuild doesn't support -j flag and handles parallelization automatically
         if sys.platform != 'win32':
