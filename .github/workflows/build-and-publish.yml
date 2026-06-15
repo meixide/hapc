@@ -11,160 +11,81 @@ on:
 
 jobs:
   build-wheels:
-    name: Build wheels on ${{ matrix.os }}
+    name: Wheels on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
-    
+        # ubuntu  -> manylinux2014 x86_64 (glibc 2.17 baseline, runs on any HPC)
+        # macos-13 -> Intel (x86_64), macos-14 -> Apple Silicon (arm64)
+        # windows -> AMD64
+        os: [ubuntu-latest, macos-13, macos-14, windows-latest]
+
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Free disk space (Ubuntu only)
-        if: runner.os == 'Linux'
-        run: |
-          df -h
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          df -h
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-      
-      - name: Install dependencies (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake libeigen3-dev build-essential
-          pip install --upgrade pip setuptools wheel pybind11 numpy scipy scikit-learn
-      
-      - name: Install dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install cmake eigen
-          pip install --upgrade pip setuptools wheel pybind11 numpy scipy scikit-learn
-      
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          # Install cmake via choco
-          choco install cmake -y
-          # Do NOT upgrade pip here: GHA Windows images often block in-place pip
-          # self-upgrades ("ERROR: To modify pip, please run ..."), which fails
-          # the whole job. Build deps are enough for `pip wheel`.
-          python -m pip install --upgrade setuptools wheel pybind11 numpy scipy scikit-learn
-      
-      - name: Setup MSVC (Windows only)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-      
-      - name: Build wheel
-        if: runner.os != 'Linux'
-        run: python -m pip wheel . --no-deps -w dist/ -v
 
-      - name: Build manylinux wheels
-        if: runner.os == 'Linux'
-        uses: docker://quay.io/pypa/manylinux2014_x86_64
+      # cibuildwheel builds + repairs (auditwheel/delocate/delvewheel) every
+      # selected CPython ABI in one go. All build selection / manylinux image /
+      # skip rules live in [tool.cibuildwheel] in pyproject.toml so the exact
+      # same build is reproducible locally via `pipx run cibuildwheel`.
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.23.3
+
+      - uses: actions/upload-artifact@v4
         with:
-          entrypoint: /bin/bash
-          args: >
-            -c "
-            set -e -x &&
-            mkdir -p /github/workspace/dist &&
-            yum install -y eigen3-devel &&
-            export CMAKE_PREFIX_PATH=/usr/include/eigen3 &&
-            for PYBIN in /opt/python/*/bin; do
-                if [[ \${PYBIN} == *cp38* || \${PYBIN} == *cp39* || \${PYBIN} == *cp310* || \${PYBIN} == *cp311* || \${PYBIN} == *cp312* ]]; then
-                  \${PYBIN}/pip wheel /github/workspace --no-deps -w /github/workspace/dist/ &&
-                  \${PYBIN}/pip install auditwheel &&
-                  auditwheel repair /github/workspace/dist/hapc-*-linux_x86_64.whl -w /github/workspace/dist/ &&
-                  rm /github/workspace/dist/hapc-*-linux_x86_64.whl
-                fi
-            done
-            "
-      
-      - name: List built wheels
-        shell: bash
-        run: ls -R dist/
-      
-      - name: Clean up build artifacts
-        if: always() && runner.os != 'Windows'
-        shell: bash
-        run: |
-          rm -rf build/
-          rm -rf *.egg-info
-          rm -rf CMakeCache.txt
-      
-      - name: Clean up build artifacts (Windows)
-        if: always() && runner.os == 'Windows'
-        shell: powershell
-        run: |
-          if (Test-Path "build") { Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue }
-          if (Test-Path "*.egg-info") { Remove-Item -Recurse -Force "*.egg-info" -ErrorAction SilentlyContinue }
-          if (Test-Path "CMakeCache.txt") { Remove-Item -Force "CMakeCache.txt" -ErrorAction SilentlyContinue }
-      
-      - name: Upload wheels to artifact
-        uses: actions/upload-artifact@v4
+          name: cibw-wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+          if-no-files-found: error  # never silently publish a release with missing wheels
+
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build sdist
+        run: pipx run build --sdist
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
-          path: dist/
+          name: cibw-sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
 
   publish-to-pypi:
     name: Publish to PyPI
-    needs: build-wheels
+    needs: [build-wheels, build-sdist]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-    
+
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.12'
-      
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip setuptools wheel twine build
-      
-      - name: Build source distribution
-        run: python -m build --sdist
-      
-      - name: Download all wheels
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: wheels-temp
-      
-      - name: Organize wheels
-        run: |
-          mkdir -p dist
-          if [ -d wheels-temp ]; then
-            echo "Copying wheel artifacts from wheels-temp to dist/"
-            find wheels-temp -name "*.whl" -exec cp {} dist/ \;
-          else
-            echo "No wheels-temp directory found; proceeding with sdist only."
-          fi
+          pattern: cibw-*
+          path: dist
+          merge-multiple: true
 
       - name: List files to publish
+        run: ls -R dist/
+
+      # Guard against the exact failure mode that shipped 2.3.0 without Linux
+      # wheels: refuse to publish unless a manylinux wheel is present.
+      - name: Verify Linux wheels are present
         run: |
-          echo "Contents of dist/:"
-          ls -R dist/ || echo "dist/ directory is empty or missing"
-      
+          if ! ls dist/*manylinux*_x86_64.whl >/dev/null 2>&1; then
+            echo "::error::No manylinux wheels found in dist/ — aborting publish."
+            exit 1
+          fi
+
       - name: Publish to PyPI
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          twine upload dist/* --skip-existing --verbose
-      
+        run: pipx run twine upload dist/* --skip-existing --verbose
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           draft: false

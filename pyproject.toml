@@ -34,3 +34,25 @@ Homepage = "https://github.com/meixide/hapc"
 Documentation = "https://github.com/meixide/hapc#readme"
 Repository = "https://github.com/meixide/hapc.git"
 Issues = "https://github.com/meixide/hapc/issues"
+
+[tool.cibuildwheel]
+# Build CPython 3.8–3.12 only; skip PyPy and musl (HPC/desktop targets are glibc).
+build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
+skip = ["pp*", "*-musllinux*"]
+build-verbosity = 1
+# Smoke-test every wheel: install it (pulling numpy/scikit-learn) and import the
+# compiled extension. Catches wrong-ABI / unresolved-symbol wheels before publish.
+test-command = "python -c \"import hapc; print(hapc.__version__)\""
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+# manylinux2014 -> glibc 2.17 baseline + bundled libstdc++ via auditwheel, so the
+# wheel installs and runs unmodified on any HPC cluster (glibc >= 2.17), no
+# compiler / conda toolchain / sysroot required.
+manylinux-x86_64-image = "manylinux2014"
+
+[tool.cibuildwheel.macos]
+archs = ["native"]  # x86_64 on macos-13, arm64 on macos-14
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
