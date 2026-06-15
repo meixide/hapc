@@ -17,16 +17,41 @@ A fast and flexible machine learning library for nonparametric high-dimensional 
 pip install hapc
 ```
 
+Prebuilt wheels are published for Linux (manylinux2014, x86_64), macOS
+(Intel + Apple Silicon) and Windows, for CPython 3.8–3.12. No compiler,
+CMake or Eigen is needed when a wheel is available.
+
+### Linux / HPC clusters
+
+The Linux wheels use the **manylinux2014** baseline (glibc 2.17), so
+`pip install hapc` works out of the box on HPC login/compute nodes —
+no `conda` toolchain, `devtoolset`, or sysroot setup required:
+
+```bash
+pip install hapc
+```
+
+If you must build from the source distribution (niche architecture, very
+old Python, or an air-gapped node), provide a C++17 compiler and either
+let CMake fetch Eigen automatically (needs network) or install Eigen and
+let `find_package(Eigen3)` find it:
+
+```bash
+# with conda compilers (recommended on HPC)
+conda install -c conda-forge cxx-compiler cmake eigen
+pip install hapc --no-binary hapc
+```
+
 ### Install from GitHub (latest development version)
 
 ```bash
-pip install git+https://github.com/yourusername/hapc.git
+pip install git+https://github.com/meixide/hapc.git
 ```
 
 Or with editable install for development:
 
 ```bash
-git clone https://github.com/yourusername/hapc.git
+git clone https://github.com/meixide/hapc.git
 cd hapc
 pip install -e .
 ```
@@ -167,7 +192,7 @@ Cross-validation to select lambda.
 Contributions welcome! The C++ core is shared between R and Python packages.
 
 ```bash
-git clone https://github.com/yourusername/hapc.git
+git clone https://github.com/meixide/hapc.git
 cd hapc
 pip install -e .
 pytest
