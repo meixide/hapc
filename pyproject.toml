@@ -43,6 +43,12 @@ build-verbosity = 1
 # Smoke-test every wheel: install it (pulling numpy/scikit-learn) and import the
 # compiled extension. Catches wrong-ABI / unresolved-symbol wheels before publish.
 test-command = "python -c \"import hapc; print(hapc.__version__)\""
+# The latest scipy (pulled in via scikit-learn) no longer ships a manylinux2014
+# wheel, so inside the glibc-2.17 test container pip would try to build it from
+# source (no OpenBLAS) and fail. Pre-installing an older scipy that *does* have a
+# 2014 wheel keeps the resolver on binaries. This only affects the in-container
+# smoke test; real systems (modern pip) get scipy's manylinux_2_28 wheel.
+test-requires = ["scipy<1.14"]
 
 [tool.cibuildwheel.linux]
 archs = ["x86_64"]
