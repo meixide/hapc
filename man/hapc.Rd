@@ -7,7 +7,7 @@
 hapc(
   X,
   Y,
-  family = c("gaussian", "binomial"),
+  family = c("gaussian", "binomial", "logit-hazard"),
   max_degree = 1L,
   npcs = nrow(X),
   lambda = 0.01,
@@ -27,7 +27,10 @@ hapc(
 \item{X}{Numeric matrix of features (rows = observations, cols = features).}
 
 \item{Y}{Numeric response vector of length \code{nrow(X)}. For
-\code{family = "binomial"}, must contain only 0/1.}
+\code{family = "binomial"}: hard labels in \code{{0,1}} or \code{{-1,+1}},
+or \emph{soft} labels in \code{[0,1]} (e.g. EM-HAL E-step posteriors).
+Soft labels are supported only for \code{norm = "1"} or \code{"2"}
+(cross-entropy target); \code{norm = "sv"} requires hard labels.}
 
 \item{family}{Character: \code{"gaussian"} (squared error, default) or
 \code{"binomial"} (logistic loss).}

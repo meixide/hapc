@@ -1,0 +1,32 @@
+url: https://meixide.github.io/hapc
+
+# Built into docs-r/ so it does not clash with the Python Sphinx site in docs/.
+destination: docs-r
+
+template:
+  bootstrap: 5
+
+reference:
+- title: High-level model fitting
+  desc: Cross-validated and single-lambda HAPC fits.
+  contents:
+  - hapc
+  - cv.hapc
+  - ate.hapc
+- title: Discrete-time survival
+  desc: >
+    Discrete-time logistic hazard (family = "logit-hazard") from right-censored
+    survival data (X, T, Delta).
+  contents:
+  - hazard.hapc
+  - print.hapc_hazard
+- title: Design & kernels
+  desc: Low-level HAL design and kernel building blocks.
+  contents:
+  - design.hapc
+  - kernel.hapc
+  - cross_kernel.hapc
+- title: Internals & demos
+  contents:
+  - pc_hal_classi_cpp
+  - spectrum_demo

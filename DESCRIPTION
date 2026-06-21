@@ -1,7 +1,7 @@
 Package: hapc
 Type: Package
 Title: Highly Adaptive Principal Components  (HAPC)
-Version: 0.3.0
+Version: 2.4.0
 Author: Carlos García Meixide
 Maintainer: Carlos García Meixide <carlos.garcia@icmat.es>
 Description: Fast HAL projection-based cross-validation routines using C++ backends. 

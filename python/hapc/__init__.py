@@ -5,7 +5,10 @@ Public API
 High-level entry points (mirror the R package):
 
 - :func:`hapc` — single-λ fit (gaussian / binomial; norm in {"sv","1","2"}).
-- :func:`cv_hapc` — k-fold cross-validated fit.
+- :func:`cv_hapc` — k-fold cross-validated fit (also dispatches
+  ``family="logit-hazard"``).
+- :func:`hazard_hapc` — discrete-time logistic hazard from right-censored
+  survival data ``(X, T, Delta)`` (norm in {"1","2"}).
 
 Lower-level building blocks:
 
@@ -16,10 +19,11 @@ Lower-level building blocks:
   :func:`single_pcghal_classification`,
   :func:`single_pcghal_classification_ridge_only`
 - :func:`pcghal_cv`, :func:`pcghal_cv_classi`, :func:`fasthal_cv`
-- :func:`ate_hapc` — ATE estimate + Wald CI via HAPC + outcome undersmoothing.
+- :func:`ate_hapc` — doubly-robust ATE estimate + Wald CI via HAPC nuisances,
+  with ``method="undersmooth"`` (default) or ``method="crossfit"`` (DML-style).
 """
 
-__version__ = "2.3.1"
+__version__ = "2.4.0"
 
 from .core import (
     DesignOutput,
@@ -56,6 +60,7 @@ from .cv import (
     pcghal_cv_classi_lasso,
 )
 from .ate import ATEResult, ate_hapc
+from .hazard import HazardResult, hazard_hapc
 
 __all__ = [
     "__version__",
@@ -63,6 +68,7 @@ __all__ = [
     "hapc",
     "cv_hapc",
     "ate_hapc",
+    "hazard_hapc",
     # design & kernels
     "design_hapc",
     "kernel_hapc",
@@ -87,6 +93,7 @@ __all__ = [
     # result types
     "ATEResult",
     "CVResult",
+    "HazardResult",
     "DesignOutput",
     "OptimizerOutput",
     "SingleLambdaResult",

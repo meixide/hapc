@@ -14,9 +14,9 @@ ate.hapc(
   log_lambda_prop_min = -5,
   log_lambda_prop_max = -3,
   grid_length_prop = 10L,
-  log_lambda_out_min = -5,
-  log_lambda_out_max = -3,
-  grid_length_out = 10L,
+  log_lambda_out_min = -10,
+  log_lambda_out_max = 2,
+  grid_length_out = 22L,
   nfolds = 5L,
   norm = c("sv", "1", "2"),
   predict = NULL,
@@ -28,12 +28,14 @@ ate.hapc(
   center = TRUE,
   approx = FALSE,
   ini = c("1", "2"),
-  plot_diagnostics = FALSE
+  plot_diagnostics = FALSE,
+  method = c("undersmooth", "crossfit"),
+  cf_folds = 5L,
+  cf_seed = 0L,
+  report_undersmoothing = FALSE
 )
 }
 \arguments{
-\item{max_degree, npcs, nfolds, norm, predict, max_iter, tol, step_factor, verbose, crit, center, approx, ini}{Same meaning as in \code{\link{cv.hapc}} (\code{family} is fixed internally).  \code{predict} is accepted for signature parity and ignored (EIF on training sample only).}
-
 \item{X}{Numeric matrix of covariates \eqn{W} (rows = observations).
 \emph{Do not} include the treatment column; it is added internally for the
 outcome model.}
@@ -46,21 +48,48 @@ outcome model.}
 \item{alpha}{Numeric in \eqn{(0,1)}.  The returned interval has confidence
 \eqn{1 - \alpha}.  Default \code{0.05}.}
 
-\item{log_lambda_prop_min, log_lambda_prop_max, grid_length_prop}{Log-\eqn{\lambda} grid for propensity cross-validation only (\code{A ~ W}, binomial), same construction as \code{cv.hapc}.}
+\item{max_degree, npcs, nfolds, norm, predict, max_iter, tol, step_factor, verbose, crit, center, approx, ini}{Same meaning as in \code{\link{cv.hapc}} (\code{family} is fixed internally).
+\code{predict} is accepted for signature parity and ignored (EIF on training sample only).}
 
-\item{log_lambda_out_min, log_lambda_out_max, grid_length_out}{Log-\eqn{\lambda} grid for outcome cross-validation (\code{Y ~ (A,W)}, gaussian) and for the undersmoothing scan over outcome \eqn{\lambda}.}
+\item{log_lambda_prop_min, log_lambda_prop_max, grid_length_prop}{Log-\eqn{\lambda} grid for propensity cross-validation only (\code{A ~ W},
+binomial), same construction as \code{cv.hapc}.}
+
+\item{log_lambda_out_min, log_lambda_out_max, grid_length_out}{Log-\eqn{\lambda} grid (defaults \code{-10}, \code{2}, \code{22}) for outcome
+cross-validation (\code{Y ~ (A,W)}, gaussian) and for the undersmoothing scan
+over \eqn{\lambda \le \lambda_{CV}}.  The grid deliberately reaches very small
+\eqn{\lambda}: for \code{method="undersmooth"} the (nearly) unbiased regime
+sits well below the CV-optimal \eqn{\lambda}, so a grid that stops too high
+never reaches it.  Undersmoothing only removes bias when the PC basis is rich
+enough; use the full basis (\code{npcs = nrow(X)}, the default).}
 
 \item{plot_diagnostics}{Logical; if \code{TRUE}, draw three base-\code{graphics}
 panels before returning: (1) propensity CV curve (logistic deviance vs \eqn{\lambda}),
 (2) outcome CV curve (MSE vs \eqn{\lambda}), (3) undersmoothing trajectory
 \eqn{|\bar{\varphi}(\lambda)|} vs outcome \eqn{\lambda} with the threshold
 line and vertical markers for the CV and selected undersmoothed \eqn{\lambda}.
-Default \code{FALSE}.}
+Only meaningful for \code{method="undersmooth"}.  Default \code{FALSE}.}
+
+\item{method}{Either \code{"undersmooth"} (default; single-sample, outcome
+undersmoothed until the in-sample EIF mean is within \eqn{\tau}) or
+\code{"crossfit"} (DML-style K-fold cross-fitting: both nuisances are fit on
+the training folds and the EIF is evaluated out-of-fold, giving honest
+inference without undersmoothing).}
+
+\item{cf_folds}{Integer number of cross-fitting folds (used only when
+\code{method="crossfit"}); folds are stratified by treatment.  Default \code{5}.}
+
+\item{cf_seed}{Integer seed for the deterministic cross-fitting fold
+assignment.  Default \code{0}.}
+
+\item{report_undersmoothing}{Logical; if \code{TRUE} (and
+\code{method="undersmooth"}), print a table of \eqn{|\bar\varphi(\lambda)|}
+versus outcome \eqn{\lambda} over the undersmoothing region with the
+threshold \eqn{\tau}.  Default \code{FALSE}.}
 }
 \value{
 A named list with three numeric scalars:
-  \item{estimate}{Plug-in ATE at the undersmoothed outcome model:
-    \code{mean(mu_hat_1(W) - mu_hat_0(W))}.}
+  \item{estimate}{Doubly-robust (AIPW) ATE at the undersmoothed outcome model:
+    \code{mean(A/pi*(Y-mu1) + mu1 - (1-A)/(1-pi)*(Y-mu0) - mu0)}.}
   \item{lower}{Lower endpoint of the \eqn{1-\alpha} Wald CI.}
   \item{upper}{Upper endpoint of the \eqn{1-\alpha} Wald CI.}
 }
@@ -73,9 +102,11 @@ empirical mean of the efficient influence function (EIF) falls below
 }
 \details{
 Mirror of the Python function \code{hapc.ate_hapc()}.  Argument names,
-defaults and behaviour match Python except that \code{family} is removed
-(binomial for propensity, gaussian for outcome) and \code{A} and
-\code{alpha} are required.
+defaults and behaviour are identical to \code{cv.hapc()} except that
+\code{family} is removed (binomial for propensity, gaussian for outcome), separate
+log-\eqn{\lambda} grids are used for propensity vs outcome/undersmoothing,
+and \code{A} (binary treatment) plus \code{alpha} are added.
+
 
 The procedure is:
 \enumerate{
@@ -91,20 +122,23 @@ The procedure is:
           (\bar{\hat\mu_1} - \bar{\hat\mu_0})}
     and let \eqn{\sigma = \mathrm{sd}_n(\hat\varphi)}.
   \item Threshold \eqn{\tau = \sigma / (\sqrt{n} \log n)}.
-  \item Walk the outcome \eqn{\lambda} grid in
-    \emph{decreasing} order; pick the first (largest) \eqn{\lambda} for
-    which \eqn{|\bar\varphi| \le \tau}.  Call it \eqn{\lambda_u}.  If no
-    grid point meets the threshold, fall back to the smallest
-    \eqn{\lambda} in the outcome grid.
-  \item Plug-in estimate
-    \eqn{\hat\psi = \mathrm{mean}(\hat\mu_1(W; \lambda_u) -
-                                   \hat\mu_0(W; \lambda_u))}.
-    CI \eqn{\hat\psi \pm z_{1-\alpha/2}\, \sigma_u / \sqrt{n}} with
-    \eqn{\sigma_u} the s.d.\ of the EIF at \eqn{\lambda_u}.
+  \item Among the outcome \eqn{\lambda} in the undersmoothing region
+    \eqn{\lambda \le \lambda_{CV}}, pick the \emph{smallest} \eqn{\lambda} for
+    which \eqn{|\bar\varphi| \le \tau} (the most undersmoothed fit still inside
+    the band).  Call it \eqn{\lambda_u}.  If none qualifies, \eqn{\lambda_u}
+    minimises \eqn{|\bar\varphi|} (with a warning).
+  \item Doubly-robust (AIPW) estimate at the undersmoothed fit,
+    \eqn{\hat\psi = \mathrm{mean}(A/\hat\pi (Y-\hat\mu_1) + \hat\mu_1 -
+      (1-A)/(1-\hat\pi)(Y-\hat\mu_0) - \hat\mu_0)}.
+    The CI \eqn{\hat\psi \pm z_{1-\alpha/2}\, \sigma_{CV} / \sqrt{n}} uses the
+    s.d.\ of the EIF at the \emph{CV} outcome fit, not the undersmoothed one: a
+    near-interpolating undersmoothed fit has tiny in-sample residuals that
+    collapse the SE and destroy coverage; the CV fit gives honest residuals.
 }
 
-No sample splitting / cross-fitting is performed; bias control comes from
-the undersmoothing step.
+For \code{method="undersmooth"} no sample splitting is performed; bias control
+comes from the undersmoothing step (which is fragile in-sample, hence the
+warnings).  \code{method="crossfit"} instead evaluates the EIF out-of-fold.
 }
 \examples{
 \dontrun{
@@ -115,6 +149,10 @@ A <- rbinom(n, 1, p)
 Y <- 2 * W[,1] + 0.5 + rnorm(n, sd = 0.5)        # truth: ATE = 0
 ate.hapc(W, Y, A, alpha = 0.05, max_degree = 2, npcs = 50,
          grid_length_prop = 4L, grid_length_out = 4L, nfolds = 3L, norm = "2")
+
+# DML-style cross-fitting (honest inference, no undersmoothing):
+ate.hapc(W, Y, A, method = "crossfit", cf_folds = 5L,
+         max_degree = 2, npcs = 50, nfolds = 3L, norm = "2")
 }
 
 }

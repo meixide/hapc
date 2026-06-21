@@ -447,7 +447,9 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
             crit: str = "grad",
             center: bool = True,
             approx: bool = False,
-            ini: str = "1") -> CVResult:
+            ini: str = "1",
+            Delta: Optional[np.ndarray] = None,
+            time_grid: Optional[np.ndarray] = None) -> CVResult:
     """k-fold cross-validated HAPC fit (Python counterpart of R ``cv.hapc()``).
 
     Parameters
@@ -456,13 +458,22 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
         Features.
     Y : np.ndarray, shape (n,)
         Response.
-    family : {"gaussian", "binomial"}, default "gaussian"
+    family : {"gaussian", "binomial", "logit-hazard"}, default "gaussian"
         Loss family. For ``"binomial"`` the loss is **always logistic** (deviance
         CV, not MSE). ``norm="sv"`` runs logistic ridge + PGD per fold;
         ``norm="2"`` runs logistic ridge only; ``norm="1"`` runs logistic
         LASSO via ``sklearn.linear_model.LogisticRegression`` with
         ``solver="liblinear"`` (mirrors R ``glmnet`` for the binomial+norm="1"
-        path).
+        path). ``"logit-hazard"`` is a discrete-time logistic hazard model: ``Y``
+        is then the observed time ``T = min(T_event, C)``, ``Delta`` (event
+        indicator) is required, and the call forwards to
+        :func:`hapc.hazard_hapc` (returning a :class:`hapc.hazard.HazardResult`,
+        not a :class:`CVResult`). ``norm="sv"`` is not supported for this family.
+    Delta : np.ndarray, optional
+        Event indicator (0/1), required only for ``family="logit-hazard"``.
+    time_grid : np.ndarray, optional
+        Discrete time grid for ``family="logit-hazard"`` (see
+        :func:`hapc.hazard_hapc`).
     max_degree : int, default 1
         Maximum interaction order.
     npcs : int, optional
@@ -497,8 +508,30 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
     >>> bool(cv.best_lambda > 0)
     True
     """
+    # family = "logit-hazard": discrete-time logistic hazard. The second
+    # positional argument Y carries the observed times T = min(T^event, C); the
+    # event indicator Delta must be supplied. norm = "sv" is flagged inside
+    # hazard_hapc. See hapc.hazard_hapc.
+    if family == "logit-hazard":
+        if Delta is None:
+            raise ValueError(
+                "family='logit-hazard' requires 'Delta' (event indicator); pass "
+                "the observed times T as Y and Delta separately. See hazard_hapc."
+            )
+        from .hazard import hazard_hapc  # local import avoids circular import
+        return hazard_hapc(
+            X, T=Y, Delta=Delta, norm=norm,
+            max_degree=max_degree, npcs=npcs, time_grid=time_grid,
+            log_lambda_min=log_lambda_min, log_lambda_max=log_lambda_max,
+            grid_length=grid_length, nfolds=nfolds, predict=predict,
+            center=center, verbose=verbose,
+            max_iter=max_iter, tol=tol, step_factor=step_factor,
+        )
+
     if family not in {"gaussian", "binomial"}:
-        raise ValueError(f"family must be 'gaussian' or 'binomial'; got '{family}'")
+        raise ValueError(
+            f"family must be 'gaussian', 'binomial', or 'logit-hazard'; got '{family}'"
+        )
     if npcs is None:
         npcs = int(X.shape[0])
 

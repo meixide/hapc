@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hapc"
-version = "2.3.1"
+version = "2.4.0"
 description = "Highly Adaptive Principal Components"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -28,10 +28,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "black", "flake8"]
+docs = ["sphinx>=7", "furo", "myst-parser"]
 
 [project.urls]
 Homepage = "https://github.com/meixide/hapc"
-Documentation = "https://github.com/meixide/hapc#readme"
+Documentation = "https://hapc.readthedocs.io"
 Repository = "https://github.com/meixide/hapc.git"
 Issues = "https://github.com/meixide/hapc/issues"
 

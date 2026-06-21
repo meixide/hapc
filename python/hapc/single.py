@@ -263,8 +263,7 @@ def single_pcghal(X: np.ndarray, Y: np.ndarray,
 
     Parameters
     ----------
-    X, Y, max_degree, npcs, lambda_, predict, center, verbose, max_iter,
-    tol, step_factor, crit, ini :
+    X, Y, max_degree, npcs, lambda_, predict, center, verbose, max_iter, tol, step_factor, crit, ini :
         See :func:`hapc`.
     approx : bool, default False
         Currently ignored (the C++ path always uses exact eigendecomposition).
@@ -476,13 +475,16 @@ def single_pcghal_classification_lasso(
     which uses ``glmnet(..., family="binomial", alpha=1, intercept=FALSE)``
     on the same ``Xtilde = U * d`` design.
 
-    Lambda parameterisation
-    -----------------------
-    Sklearn's L1 logistic objective with ``liblinear`` is
+    **Lambda parameterisation.** Sklearn's L1 logistic objective with
+    ``liblinear`` is
+
+    .. code-block:: text
 
         min_w   ||w||_1  +  C * sum_i log(1 + exp(-y_i x_i^T w))      (1)
 
     while the package convention (matching ``glmnet``'s binomial loss) is
+
+    .. code-block:: text
 
         min_w   (1/n) * sum_i log(1 + exp(-y_i x_i^T w))  +  lambda * ||w||_1   (2)
 
@@ -684,6 +686,13 @@ def hapc(X: np.ndarray, Y: np.ndarray,
     >>> fit.alpha.shape  # doctest: +ELLIPSIS
     (...,)
     """
+    if family == "logit-hazard":
+        raise ValueError(
+            "family='logit-hazard' is a cross-validated discrete-time hazard "
+            "model; use hazard_hapc(X, T, Delta, ...) or "
+            "cv_hapc(..., family='logit-hazard') instead of the single-lambda hapc()."
+        )
+
     if npcs is None:
         npcs = int(X.shape[0])
 

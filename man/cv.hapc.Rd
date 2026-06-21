@@ -7,7 +7,7 @@
 cv.hapc(
   X,
   Y,
-  family = c("gaussian", "binomial"),
+  family = c("gaussian", "binomial", "logit-hazard"),
   max_degree = 1L,
   npcs = nrow(X),
   log_lambda_min = -5,
@@ -23,17 +23,25 @@ cv.hapc(
   crit = c("grad", "risk"),
   center = TRUE,
   approx = FALSE,
-  ini = c("1", "2")
+  ini = c("1", "2"),
+  Delta = NULL,
+  time_grid = NULL
 )
 }
 \arguments{
 \item{X}{Numeric matrix of features (rows = observations, cols = features).}
 
 \item{Y}{Numeric response vector of length \code{nrow(X)}. For
-\code{family = "binomial"}, must contain only 0/1.}
+\code{family = "binomial"}: hard labels in \code{{0,1}} or \code{{-1,+1}},
+or \emph{soft} labels in \code{[0,1]} (e.g. EM-HAL E-step posteriors).
+Soft labels are supported only for \code{norm = "1"} or \code{"2"}
+(cross-entropy target); \code{norm = "sv"} requires hard labels.}
 
-\item{family}{Character: \code{"gaussian"} (squared error, default) or
-\code{"binomial"} (logistic loss).}
+\item{family}{Character: \code{"gaussian"}, \code{"binomial"}, or
+\code{"logit-hazard"}.  The last is a discrete-time \emph{logistic hazard}
+model: the second argument \code{Y} is then the observed time
+\eqn{T = \min(T^{event}, C)} and \code{Delta} (event indicator) must be
+supplied; the call is forwarded to \code{\link{hazard.hapc}}.}
 
 \item{max_degree}{Integer; maximum interaction order for the HAL basis.
 Default \code{1L} (additive HAL).}
@@ -89,6 +97,14 @@ Default \code{TRUE}.}
 \item{ini}{Character; initialiser for the projected-gradient solver when
 \code{norm = "sv"}: \code{"1"} = LASSO via \code{fast_pchal_call}
 (default, matches Python), \code{"2"} = ridge via \code{ridge_call}.}
+
+\item{Delta}{Event indicator \eqn{\Delta \in \{0,1\}} of length
+\code{nrow(X)}, required only when \code{family = "logit-hazard"}.
+Ignored otherwise.}
+
+\item{time_grid}{Optional discrete time grid for
+\code{family = "logit-hazard"} (see \code{\link{hazard.hapc}}). Ignored
+otherwise.}
 }
 \value{
 A list with elements \code{mses} / \code{deviances} (binomial),

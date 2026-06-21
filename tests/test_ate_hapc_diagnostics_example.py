@@ -50,10 +50,14 @@ GRID_LENGTH_OUT = 8
 
 FIGURE_NAME = "ate_hapc_diagnostics_demo.png"
 
-# Pinned outputs (``alpha=0.05``, ``npcs = n - 1``, current C++/Python stack)
-_EXPECTED_ESTIMATE = 0.07790009282426053
-_EXPECTED_LOWER = -0.050705979103681936
-_EXPECTED_UPPER = 0.206506164752203
+# Pinned outputs (``alpha=0.05``, ``npcs = n - 1``, current C++/Python stack).
+# Re-pinned after the undersmoother fix: the gate scans only the undersmoothing
+# region (λ ≤ λ_CV) and selects the smallest λ within the τ band (§8.3); the CI
+# SE is now computed at the CV outcome fit (honest residuals) rather than the
+# undersmoothed fit, which widens the interval (the point estimate is unchanged).
+_EXPECTED_ESTIMATE = 0.06986743269053718
+_EXPECTED_LOWER = -0.09795542622940305
+_EXPECTED_UPPER = 0.2376902916104774
 
 
 def _expit(x: np.ndarray) -> np.ndarray:

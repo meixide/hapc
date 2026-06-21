@@ -41,3 +41,8 @@ tests
 .RData
 src/*.o
 src/*.so
+
+# Docs build artifacts
+docs/_build/
+docs/generated/
+docs-r/

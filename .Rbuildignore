@@ -8,3 +8,9 @@
 ^ate_hapc_diagnostics_demo\.png$
 ^scripts/
 ^Makefile$
+^docs$
+^docs-r$
+^examples$
+^_pkgdown\.yml$
+^\.readthedocs\.yaml$
+^\.github$

@@ -85,7 +85,7 @@
 #'
 #' @export
 hapc <- function(X, Y,
-                 family = c("gaussian", "binomial"),
+                 family = c("gaussian", "binomial", "logit-hazard"),
                  max_degree = 1L,
                  npcs = nrow(X),
                  lambda = 0.01,
@@ -104,6 +104,14 @@ hapc <- function(X, Y,
   norm   <- match.arg(norm)
   crit   <- match.arg(crit)
   ini    <- match.arg(ini)
+
+  # family = "logit-hazard" is a discrete-time hazard model that needs
+  # cross-validated regularisation: route users to the CV wrapper.
+  if (identical(family, "logit-hazard")) {
+    stop("family='logit-hazard' is a cross-validated discrete-time hazard model; ",
+         "use hazard.hapc(X, T, Delta, ...) or cv.hapc(..., family='logit-hazard') ",
+         "instead of the single-lambda hapc().", call. = FALSE)
+  }
 
   if (!is.matrix(X)) X <- as.matrix(X)
   storage.mode(X) <- "double"

@@ -1,0 +1,9 @@
+# Documentation build dependencies (used by Read the Docs).
+# The compiled hapc.hapc_core extension is mocked in conf.py, so no C++ toolchain
+# is needed — only the pure-Python import dependencies plus Sphinx.
+sphinx>=7
+furo
+myst-parser
+numpy>=1.24,<2.3
+scipy
+scikit-learn

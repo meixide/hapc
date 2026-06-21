@@ -2,6 +2,17 @@
 
 A fast and flexible machine learning library for nonparametric high-dimensional regression and classification with guarantees.
 
+## Documentation
+
+- **Python API** (rendered from docstrings): https://hapc.readthedocs.io —
+  configured via [`.readthedocs.yaml`](.readthedocs.yaml) and
+  [`docs/`](docs/) (Sphinx + autodoc). Build locally with
+  `pip install -e ".[docs]" && sphinx-build -b html docs docs/_build/html`.
+- **R API** (rendered from roxygen): a [pkgdown](https://pkgdown.r-lib.org)
+  site built by [`.github/workflows/pkgdown.yaml`](.github/workflows/pkgdown.yaml)
+  (config in [`_pkgdown.yml`](_pkgdown.yml)). Build locally with
+  `Rscript -e 'pkgdown::build_site()'`.
+
 ## Installation
 
 ### Prerequisites
@@ -147,6 +158,113 @@ cv_result = pcghal_cv(
 )
 print(cv_result.best_lambda)
 ```
+
+### Average Treatment Effect (ATE)
+
+Estimate the ATE `E[Y(1)] − E[Y(0)]` with HAPC nuisance models and a
+doubly-robust (AIPW) efficient influence function. `ate_hapc` returns a point
+estimate and a `(1 − alpha)` Wald confidence interval.
+
+```python
+from hapc import ate_hapc
+
+# W: covariates (n, p); A: binary treatment in {0,1} or {-1,+1}; Y: outcome
+res = ate_hapc(W, Y, A, alpha=0.05, method="undersmooth")
+print(res.estimate, res.lower, res.upper)
+```
+
+Two bias-control strategies are available through `method`:
+
+- **`method="undersmooth"`** (default) — single-sample estimator. The outcome
+  model is undersmoothed (λ pushed below the CV-optimal value) until the
+  empirical influence function is within `σ / (√n · log n)`. This requires the
+  **full PC basis** (`npcs = n`, the default) and a λ grid that reaches small λ
+  (defaults `log_lambda_out_min = -10`); otherwise the gate never reaches the
+  low-bias regime and `ate_hapc` emits a warning. Pass
+  `report_undersmoothing=True` to print the `|mean(EIF)|`-vs-λ path.
+- **`method="crossfit"`** — DML-style K-fold cross-fitting (`cf_folds`, default
+  5, stratified by treatment). Both nuisances are fit on the training folds and
+  the influence function is evaluated out-of-fold, giving honest point estimates
+  and coverage without undersmoothing. Recommended under good overlap.
+
+### Discrete-time survival (`family = "logit-hazard"`)
+
+Fit a discrete-time **logistic hazard** model with HAPC. You supply only the
+observed right-censored data — baseline covariates `X`, the observed time
+`T = min(T_event, C)`, and the event indicator `Delta = 1(T_event <= C)` — and
+the wrapper performs the person-period expansion (one row per
+subject-per-interval-at-risk, hazard label = 1 at the event interval), prepends
+the visit time as the first HAL covariate, and cross-validates the binomial fit.
+
+**Model.** The discrete hazard is the conditional event probability in interval
+`t` given survival up to `t`, modelled on the logit scale by a HAPC fit `f` of
+the augmented covariate `(t, x)`:
+
+```text
+lambda(t | x) = P(T_event = t | T_event >= t, X = x)
+logit lambda(t | x) = f(t, x)
+```
+
+**Person-period likelihood.** Under independent right-censoring the observed-data
+likelihood factorises over the at-risk intervals,
+
+```text
+prod_i prod_{t <= T_i}  lambda(t|x_i)^Y_it * (1 - lambda(t|x_i))^(1 - Y_it),
+with  Y_it = 1(T_event_i = t),
+```
+
+which is exactly the Bernoulli (logistic) likelihood of the expanded
+person-period table — so a binomial HAPC fit of `Y_it` on `(t, x_i)` estimates
+the discrete hazard (Cox 1972; Brown 1975; Allison 1982).
+
+**Survival.** The conditional survival function follows by the product-limit
+relation `S(t | x) = prod_{s <= t} (1 - lambda(s | x))`, returned for new
+subjects when `predict=` is supplied.
+
+```python
+from hapc import hazard_hapc
+import numpy as np
+
+# X: baseline covariates (n, p); T: observed times; Delta: 0/1 event indicator
+fit = hazard_hapc(X, T, Delta, norm="1", max_degree=2, time_grid=np.arange(1, 7))
+fit.hazard        # estimated hazard per person-period row (CV predictions)
+fit.best_lambda, fit.interior   # CV-selected lambda; is it interior to the grid?
+
+# survival curves S(t|x) for new subjects
+fit = hazard_hapc(X, T, Delta, norm="1", predict=X_new)
+fit.predict_survival            # (m, K) survival probabilities over the grid
+```
+
+```r
+library(hapc)
+# equivalent to cv.hapc(X, T, family = "logit-hazard", Delta = Delta, norm = "1")
+fit <- hazard.hapc(X, T, Delta, norm = "1", max_degree = 2, time_grid = 1:6)
+fit$hazard; fit$best_lambda; fit$interior
+```
+
+`norm` must be `"1"` (logistic LASSO) or `"2"` (logistic ridge); `norm = "sv"`
+is **not implemented** for this family and is flagged.
+
+**Returns** (Python `HazardResult` / R `hapc_hazard`):
+
+- `hazard` — cross-validated discrete hazard for each person-period row
+- `lambdas`, `risk`, `best_lambda` — CV grid, mean logistic deviance, selected λ
+- `interior` — whether `best_lambda` is strictly inside the grid (sanity check)
+- `time_grid`, `ids`/`id`, `Y` — the discrete grid and person-period bookkeeping
+- `predict_hazard`, `predict_survival` — hazard surface and survival curves for
+  new subjects (only when `predict=` is given)
+- `cv` — the underlying cross-validation result
+
+Worked end-to-end examples (five hazard data-generating processes, with
+true-vs-estimated hazard scatters and CV risk-vs-λ curves verifying an interior
+optimum) are in
+[`examples/hazard_logit_hazard_examples.R`](examples/hazard_logit_hazard_examples.R)
+and
+[`examples/hazard_logit_hazard_examples.py`](examples/hazard_logit_hazard_examples.py).
+
+**References.** Cox (1972, *JRSS B*); Brown (1975, *Biometrics*); Allison (1982,
+*Sociological Methodology*); Singer & Willett (2003, *Applied Longitudinal Data
+Analysis*); Benkeser & van der Laan (2016, *IEEE DSAA*).
 
 ## API Reference
 

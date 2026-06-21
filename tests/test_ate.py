@@ -138,6 +138,62 @@ class TestAteHapc:
         assert isinstance(res, ATEResult)
         plt.close("all")
 
+    def test_report_undersmoothing_prints_table(self, capsys):
+        W, Y, A = _simulate_simple(n=120, seed=15)
+        ate_hapc(W, Y, A, alpha=0.05, max_degree=2, npcs=20, nfolds=3,
+                 norm="2", report_undersmoothing=True, **_GRID_AB)
+        out = capsys.readouterr().out
+        assert "undersmoothing report" in out
+        assert "|mean EIF|" in out
+        assert "tau = sigma_CV" in out
+
+    def test_undersmooth_warns_when_gate_uninformative(self):
+        """The in-sample gate emits a UserWarning in its degenerate regimes
+        (CV fit already in-band, grid-edge, or τ never reached)."""
+        W, Y, A = _simulate_simple(n=120, seed=10)
+        with pytest.warns(UserWarning, match="undersmooth"):
+            ate_hapc(W, Y, A, alpha=0.05, max_degree=2, npcs=20,
+                     nfolds=3, norm="2", **_GRID_AB)
+
+    def test_crossfit_returns_three_finite_ordered(self):
+        W, Y, A = _simulate_simple(n=160, seed=11)
+        res = ate_hapc(
+            W, Y, A, alpha=0.05,
+            max_degree=2, npcs=40, nfolds=3, norm="2",
+            method="crossfit", cf_folds=4,
+            **_GRID_AB,
+        )
+        assert isinstance(res, ATEResult)
+        assert np.isfinite(res.estimate)
+        assert res.lower <= res.estimate <= res.upper
+
+    def test_crossfit_accepts_pm1_treatment(self):
+        W, Y, A = _simulate_simple(n=120, seed=12)
+        Apm1 = 2.0 * A - 1.0
+        base = dict(max_degree=2, npcs=30, nfolds=2, norm="2",
+                    method="crossfit", cf_folds=3, **_GRID_AB)
+        res01 = ate_hapc(W, Y, A, alpha=0.05, **base)
+        rpm1 = ate_hapc(W, Y, Apm1, alpha=0.05, **base)
+        assert np.isclose(res01.estimate, rpm1.estimate, atol=1e-10)
+        assert np.isclose(res01.lower, rpm1.lower, atol=1e-10)
+        assert np.isclose(res01.upper, rpm1.upper, atol=1e-10)
+
+    def test_crossfit_signal_recovery_loose(self):
+        W, Y, A = _simulate_with_effect(n=300, seed=13, effect=1.0)
+        res = ate_hapc(
+            W, Y, A, alpha=0.05, max_degree=2, npcs=40,
+            log_lambda_prop_min=-5, log_lambda_prop_max=-2, grid_length_prop=6,
+            log_lambda_out_min=-5, log_lambda_out_max=-2, grid_length_out=6,
+            nfolds=3, norm="2", method="crossfit", cf_folds=5,
+        )
+        assert -0.5 < res.estimate < 2.5
+
+    def test_method_validation(self):
+        W, Y, A = _simulate_simple(n=80, seed=14)
+        with pytest.raises(ValueError):
+            ate_hapc(W, Y, A, alpha=0.05, max_degree=1, npcs=10,
+                     nfolds=2, norm="2", method="bogus", **_GRID_AB)
+
     def test_split_grids_prop_vs_out(self):
         """Outcome grid can differ from propensity grid (undersmoothing on outcome only)."""
         rng = np.random.default_rng(0)

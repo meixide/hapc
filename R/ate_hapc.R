@@ -27,18 +27,36 @@
 #'   Log-\eqn{\lambda} grid for propensity cross-validation only (\code{A ~ W},
 #'   binomial), same construction as \code{cv.hapc}.
 #' @param log_lambda_out_min,log_lambda_out_max,grid_length_out
-#'   Log-\eqn{\lambda} grid for outcome cross-validation (\code{Y ~ (A,W)},
-#'   gaussian) and for the undersmoothing scan over outcome \eqn{\lambda}.
+#'   Log-\eqn{\lambda} grid (defaults \code{-10}, \code{2}, \code{22}) for outcome
+#'   cross-validation (\code{Y ~ (A,W)}, gaussian) and for the undersmoothing scan
+#'   over \eqn{\lambda \le \lambda_{CV}}.  The grid deliberately reaches very small
+#'   \eqn{\lambda}: for \code{method="undersmooth"} the (nearly) unbiased regime
+#'   sits well below the CV-optimal \eqn{\lambda}, so a grid that stops too high
+#'   never reaches it.  Undersmoothing only removes bias when the PC basis is rich
+#'   enough; use the full basis (\code{npcs = nrow(X)}, the default).
+#' @param method Either \code{"undersmooth"} (default; single-sample, outcome
+#'   undersmoothed until the in-sample EIF mean is within \eqn{\tau}) or
+#'   \code{"crossfit"} (DML-style K-fold cross-fitting: both nuisances are fit on
+#'   the training folds and the EIF is evaluated out-of-fold, giving honest
+#'   inference without undersmoothing).
+#' @param cf_folds Integer number of cross-fitting folds (used only when
+#'   \code{method="crossfit"}); folds are stratified by treatment.  Default \code{5}.
+#' @param cf_seed Integer seed for the deterministic cross-fitting fold
+#'   assignment.  Default \code{0}.
+#' @param report_undersmoothing Logical; if \code{TRUE} (and
+#'   \code{method="undersmooth"}), print a table of \eqn{|\bar\varphi(\lambda)|}
+#'   versus outcome \eqn{\lambda} over the undersmoothing region with the
+#'   threshold \eqn{\tau}.  Default \code{FALSE}.
 #' @param plot_diagnostics Logical; if \code{TRUE}, draw three base-\code{graphics}
 #'   panels before returning: (1) propensity CV curve (logistic deviance vs \eqn{\lambda}),
 #'   (2) outcome CV curve (MSE vs \eqn{\lambda}), (3) undersmoothing trajectory
 #'   \eqn{|\bar{\varphi}(\lambda)|} vs outcome \eqn{\lambda} with the threshold
 #'   line and vertical markers for the CV and selected undersmoothed \eqn{\lambda}.
-#'   Default \code{FALSE}.
+#'   Only meaningful for \code{method="undersmooth"}.  Default \code{FALSE}.
 #'
 #' @return A named list with three numeric scalars:
-#'   \item{estimate}{Plug-in ATE at the undersmoothed outcome model:
-#'     \code{mean(mu_hat_1(W) - mu_hat_0(W))}.}
+#'   \item{estimate}{Doubly-robust (AIPW) ATE at the undersmoothed outcome model:
+#'     \code{mean(A/pi*(Y-mu1) + mu1 - (1-A)/(1-pi)*(Y-mu0) - mu0)}.}
 #'   \item{lower}{Lower endpoint of the \eqn{1-\alpha} Wald CI.}
 #'   \item{upper}{Upper endpoint of the \eqn{1-\alpha} Wald CI.}
 #'
@@ -57,20 +75,23 @@
 #'           (\bar{\hat\mu_1} - \bar{\hat\mu_0})}
 #'     and let \eqn{\sigma = \mathrm{sd}_n(\hat\varphi)}.
 #'   \item Threshold \eqn{\tau = \sigma / (\sqrt{n} \log n)}.
-#'   \item Walk the outcome \eqn{\lambda} grid in
-#'     \emph{decreasing} order; pick the first (largest) \eqn{\lambda} for
-#'     which \eqn{|\bar\varphi| \le \tau}.  Call it \eqn{\lambda_u}.  If no
-#'     grid point meets the threshold, fall back to the smallest
-#'     \eqn{\lambda} in the grid.
-#'   \item Plug-in estimate
-#'     \eqn{\hat\psi = \mathrm{mean}(\hat\mu_1(W; \lambda_u) -
-#'                                    \hat\mu_0(W; \lambda_u))}.
-#'     CI \eqn{\hat\psi \pm z_{1-\alpha/2}\, \sigma_u / \sqrt{n}} with
-#'     \eqn{\sigma_u} the s.d.\ of the EIF at \eqn{\lambda_u}.
+#'   \item Among the outcome \eqn{\lambda} in the undersmoothing region
+#'     \eqn{\lambda \le \lambda_{CV}}, pick the \emph{smallest} \eqn{\lambda} for
+#'     which \eqn{|\bar\varphi| \le \tau} (the most undersmoothed fit still inside
+#'     the band).  Call it \eqn{\lambda_u}.  If none qualifies, \eqn{\lambda_u}
+#'     minimises \eqn{|\bar\varphi|} (with a warning).
+#'   \item Doubly-robust (AIPW) estimate at the undersmoothed fit,
+#'     \eqn{\hat\psi = \mathrm{mean}(A/\hat\pi (Y-\hat\mu_1) + \hat\mu_1 -
+#'       (1-A)/(1-\hat\pi)(Y-\hat\mu_0) - \hat\mu_0)}.
+#'     The CI \eqn{\hat\psi \pm z_{1-\alpha/2}\, \sigma_{CV} / \sqrt{n}} uses the
+#'     s.d.\ of the EIF at the \emph{CV} outcome fit, not the undersmoothed one: a
+#'     near-interpolating undersmoothed fit has tiny in-sample residuals that
+#'     collapse the SE and destroy coverage; the CV fit gives honest residuals.
 #' }
 #'
-#' No sample splitting / cross-fitting is performed; bias control comes from
-#' the undersmoothing step.
+#' For \code{method="undersmooth"} no sample splitting is performed; bias control
+#' comes from the undersmoothing step (which is fragile in-sample, hence the
+#' warnings).  \code{method="crossfit"} instead evaluates the EIF out-of-fold.
 #'
 #' @examples
 #' \dontrun{
@@ -81,6 +102,10 @@
 #' Y <- 2 * W[,1] + 0.5 + rnorm(n, sd = 0.5)        # truth: ATE = 0
 #' ate.hapc(W, Y, A, alpha = 0.05, max_degree = 2, npcs = 50,
 #'          grid_length_prop = 4L, grid_length_out = 4L, nfolds = 3L, norm = "2")
+#'
+#' # DML-style cross-fitting (honest inference, no undersmoothing):
+#' ate.hapc(W, Y, A, method = "crossfit", cf_folds = 5L,
+#'          max_degree = 2, npcs = 50, nfolds = 3L, norm = "2")
 #' }
 #'
 #' @export
@@ -91,9 +116,9 @@ ate.hapc <- function(X, Y, A,
                      log_lambda_prop_min = -5,
                      log_lambda_prop_max = -3,
                      grid_length_prop = 10L,
-                     log_lambda_out_min = -5,
-                     log_lambda_out_max = -3,
-                     grid_length_out = 10L,
+                     log_lambda_out_min = -10,
+                     log_lambda_out_max = 2,
+                     grid_length_out = 22L,
                      nfolds = 5L,
                      norm = c("sv", "1", "2"),
                      predict = NULL,
@@ -105,11 +130,16 @@ ate.hapc <- function(X, Y, A,
                      center = TRUE,
                      approx = FALSE,
                      ini = c("1", "2"),
-                     plot_diagnostics = FALSE) {
+                     plot_diagnostics = FALSE,
+                     method = c("undersmooth", "crossfit"),
+                     cf_folds = 5L,
+                     cf_seed = 0L,
+                     report_undersmoothing = FALSE) {
 
-  norm <- match.arg(norm)
-  crit <- match.arg(crit)
-  ini  <- match.arg(ini)
+  norm   <- match.arg(norm)
+  crit   <- match.arg(crit)
+  ini    <- match.arg(ini)
+  method <- match.arg(method)
 
   if (!is.numeric(alpha) || length(alpha) != 1L ||
       !(alpha > 0 && alpha < 1)) {
@@ -150,6 +180,22 @@ ate.hapc <- function(X, Y, A,
   verbose             <- as.logical(verbose)
   center              <- as.logical(center)
   approx              <- as.logical(approx)
+  cf_folds            <- as.integer(cf_folds)
+  cf_seed             <- as.integer(cf_seed)
+
+  if (method == "crossfit") {
+    if (isTRUE(plot_diagnostics) || isTRUE(report_undersmoothing)) {
+      warning("plot_diagnostics / report_undersmoothing apply only to ",
+              "method='undersmooth'; ignored for method='crossfit'.")
+    }
+    return(.ate_crossfit(
+      X, Y, A01, n, alpha, max_degree, npcs,
+      log_lambda_prop_min, log_lambda_prop_max, grid_length_prop,
+      log_lambda_out_min, log_lambda_out_max, grid_length_out,
+      nfolds, norm, max_iter, tol, step_factor, verbose, crit,
+      center, approx, ini, cf_folds, cf_seed
+    ))
+  }
 
   lambdas_out <- exp(seq(log_lambda_out_min, log_lambda_out_max,
                          length.out = grid_length_out))
@@ -227,6 +273,16 @@ ate.hapc <- function(X, Y, A,
     eif1 - eif0
   }
 
+  .psi_dr <- function(mu1, mu0) {
+    mean((A01 / pi1) * (Y - mu1) + mu1 -
+           ((1 - A01) / (1 - pi1)) * (Y - mu0) - mu0)
+  }
+
+  .eif_dr <- function(mu1, mu0, psi) {
+    (A01 / pi1) * (Y - mu1) + mu1 -
+      ((1 - A01) / (1 - pi1)) * (Y - mu0) - mu0 - psi
+  }
+
   .pop_sd <- function(x) sqrt(mean((x - mean(x))^2))
 
   cv_pair <- .mu_pair(lam_out_cv)
@@ -234,27 +290,62 @@ ate.hapc <- function(X, Y, A,
   sigma_cv <- .pop_sd(eif_cv)
   threshold <- sigma_cv / (sqrt(n) * log(n))
 
-  lam_grid_dec <- sort(lambdas_out, decreasing = TRUE)
+  # Undersmoothing region: only lambda <= lambda_CV (decreasing lambda = more
+  # flexible outcome fit).  Select the *smallest* lambda whose |mean(EIF)| <= tau
+  # (most undersmoothed fit still inside the band); fall back to the lambda that
+  # minimises |mean(EIF)| with a warning.
+  und_lams <- sort(lambdas_out[lambdas_out <= lam_out_cv * (1 + 1e-9)])
+  if (length(und_lams) == 0L) und_lams <- lam_out_cv
 
-  lam_und <- NA_real_
-  eif_und <- NULL
-  und_pair <- NULL
-  for (lam in lam_grid_dec) {
+  fit_lams  <- numeric(0)
+  fit_abs   <- numeric(0)
+  fit_pairs <- list()
+  for (lam in und_lams) {
     pair <- tryCatch(.mu_pair(lam), error = function(e) NULL)
     if (is.null(pair)) next
-    eif <- .eif_diff(pair$mu1, pair$mu0)
-    if (abs(mean(eif)) <= threshold) {
-      lam_und <- lam
-      und_pair <- pair
-      eif_und <- eif
-      break
-    }
+    fit_lams <- c(fit_lams, lam)
+    fit_abs  <- c(fit_abs, abs(mean(.eif_diff(pair$mu1, pair$mu0))))
+    fit_pairs[[length(fit_pairs) + 1L]] <- pair
+  }
+  if (length(fit_lams) == 0L) {
+    stop("Outcome model failed to fit on the entire lambda grid.")
   }
 
-  if (is.null(eif_und)) {
-    lam_und <- min(lambdas_out)
-    und_pair <- .mu_pair(lam_und)
-    eif_und <- .eif_diff(und_pair$mu1, und_pair$mu0)
+  within <- which(fit_abs <= threshold)
+  if (length(within) > 0L) {
+    sel <- within[which.min(fit_lams[within])]   # smallest lambda inside the band
+    lam_und <- fit_lams[sel]
+    if (lam_und >= lam_out_cv * (1 - 1e-9)) {
+      warning("ate.hapc(method='undersmooth'): the CV outcome fit already ",
+              "satisfies the EIF threshold tau, so no undersmoothing occurred ",
+              "and any in-sample plug-in/DR bias is left uncorrected. Prefer ",
+              "method='crossfit', or lower log_lambda_out_min.")
+    } else if (length(fit_lams) > 1L && lam_und <= min(fit_lams) * (1 + 1e-9)) {
+      warning("ate.hapc(method='undersmooth'): undersmoothing reached the ",
+              "smallest outcome lambda in the grid (the band stays satisfied ",
+              "to the grid edge), which may over-undersmooth toward ",
+              "interpolation. Inspect plot_diagnostics or prefer method='crossfit'.")
+    }
+  } else {
+    sel <- which.min(fit_abs)
+    lam_und <- fit_lams[sel]
+    warning("ate.hapc(method='undersmooth'): undersmoothing never brought ",
+            "|mean(EIF)| within the threshold tau along the outcome lambda ",
+            "grid; using the lambda that minimises it. The in-sample EIF gate ",
+            "is uninformative here -- prefer method='crossfit'.")
+  }
+  und_pair <- fit_pairs[[sel]]
+
+  if (isTRUE(report_undersmoothing)) {
+    cat(sprintf("\nate.hapc undersmoothing report (method='undersmooth')\n"))
+    cat(sprintf("  n = %d   sigma_CV = %.6g   tau = %.6g\n", n, sigma_cv, threshold))
+    cat(sprintf("  CV outcome lambda = %.6g   selected lambda = %.6g\n",
+                lam_out_cv, lam_und))
+    cat(sprintf("  %12s  %12s  %7s\n", "lambda", "|mean EIF|", "<=tau?"))
+    for (i in order(fit_lams, decreasing = TRUE)) {
+      cat(sprintf("  %12.4e  %12.6f  %7s\n", fit_lams[i], fit_abs[i],
+                  if (fit_abs[i] <= threshold) "yes" else "no"))
+    }
   }
 
   if (isTRUE(plot_diagnostics)) {
@@ -273,11 +364,118 @@ ate.hapc <- function(X, Y, A,
     )
   }
 
-  psi <- mean(und_pair$mu1 - und_pair$mu0)
-  sigma_und <- .pop_sd(eif_und)
+  # DR point estimate at the undersmoothed fit; CI s.d. from the EIF at the CV
+  # fit (honest residuals -- the undersmoothed near-interpolating fit collapses
+  # std(EIF) and destroys coverage).
+  psi <- .psi_dr(und_pair$mu1, und_pair$mu0)
+  eif_se <- .eif_dr(cv_pair$mu1, cv_pair$mu0, psi)
+  sigma <- .pop_sd(eif_se)
   z <- stats::qnorm(1 - alpha / 2)
-  half <- z * sigma_und / sqrt(n)
+  half <- z * sigma / sqrt(n)
 
+  list(
+    estimate = as.numeric(psi),
+    lower    = as.numeric(psi - half),
+    upper    = as.numeric(psi + half)
+  )
+}
+
+# ---------------------------------------------------------------------------
+# Cross-fitting (DML-style AIPW) -- counterpart of the Python `_ate_crossfit`.
+# ---------------------------------------------------------------------------
+
+# Stratified K-fold assignment in {0, ..., K-1}, balanced within each arm,
+# deterministic given `seed`.  The user's RNG state is saved and restored.
+.ate_make_folds <- function(n, K, strat, seed) {
+  folds <- integer(n)
+  has_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (has_seed) get(".Random.seed", envir = .GlobalEnv) else NULL
+  on.exit({
+    if (has_seed) assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+      rm(".Random.seed", envir = .GlobalEnv)
+  })
+  set.seed(seed)
+  for (cls in c(0, 1)) {
+    idx <- which(strat == cls)
+    if (length(idx) == 0L) next
+    idx <- sample(idx)
+    folds[idx] <- ((seq_along(idx) - 1L) %% K)
+  }
+  folds
+}
+
+.ate_crossfit <- function(X, Y, A01, n, alpha, max_degree, npcs,
+                          log_lambda_prop_min, log_lambda_prop_max, grid_length_prop,
+                          log_lambda_out_min, log_lambda_out_max, grid_length_out,
+                          nfolds, norm, max_iter, tol, step_factor, verbose, crit,
+                          center, approx, ini, cf_folds, cf_seed) {
+  if (cf_folds < 2L) stop("cf_folds must be >= 2; got ", cf_folds, ".")
+  n1 <- sum(A01); n0 <- n - n1
+  if (min(n1, n0) < cf_folds) {
+    stop("cf_folds=", cf_folds, " exceeds the rarer treatment arm's count; ",
+         "use fewer folds or more data.")
+  }
+
+  folds <- .ate_make_folds(n, cf_folds, A01, cf_seed)
+  pi1 <- numeric(n); mu1 <- numeric(n); mu0 <- numeric(n)
+
+  cv_args <- list(
+    max_degree = max_degree, nfolds = nfolds, norm = norm, predict = NULL,
+    max_iter = max_iter, tol = tol, step_factor = step_factor,
+    verbose = verbose, crit = crit, center = center, approx = approx, ini = ini
+  )
+
+  for (k in 0:(cf_folds - 1L)) {
+    te <- which(folds == k); tr <- which(folds != k)
+    if (length(te) == 0L || length(tr) == 0L) {
+      stop("Empty cross-fitting fold ", k, "; reduce cf_folds.")
+    }
+    npcs_k <- max(1L, min(npcs, length(tr) - 1L))
+    Xtr <- X[tr, , drop = FALSE]; Xte <- X[te, , drop = FALSE]
+    storage.mode(Xtr) <- "double"; storage.mode(Xte) <- "double"
+
+    cvp <- do.call(cv.hapc, c(list(
+      X = Xtr, Y = A01[tr], family = "binomial",
+      log_lambda_min = log_lambda_prop_min, log_lambda_max = log_lambda_prop_max,
+      grid_length = grid_length_prop, npcs = npcs_k), cv_args))
+    pf <- hapc(Xtr, A01[tr], family = "binomial", max_degree = max_degree,
+               npcs = npcs_k, lambda = as.numeric(cvp$best_lambda), norm = norm,
+               predict = Xte, max_iter = max_iter, tol = tol,
+               step_factor = step_factor, verbose = verbose, crit = crit,
+               center = center, approx = approx, ini = ini)
+    p <- .ate_propensity_probs(pf)
+    pi1[te] <- pmin(pmax(p, 1e-8), 1 - 1e-8)
+
+    Xout_tr <- cbind(A01[tr], Xtr); colnames(Xout_tr) <- NULL
+    storage.mode(Xout_tr) <- "double"
+    cvo <- do.call(cv.hapc, c(list(
+      X = Xout_tr, Y = Y[tr], family = "gaussian",
+      log_lambda_min = log_lambda_out_min, log_lambda_max = log_lambda_out_max,
+      grid_length = grid_length_out, npcs = npcs_k), cv_args))
+    m <- length(te)
+    Xmu1 <- cbind(rep(1, m), Xte); colnames(Xmu1) <- NULL
+    Xmu0 <- cbind(rep(0, m), Xte); colnames(Xmu0) <- NULL
+    Xe <- rbind(Xmu1, Xmu0); storage.mode(Xe) <- "double"
+    ro <- hapc(Xout_tr, Y[tr], family = "gaussian", max_degree = max_degree,
+               npcs = npcs_k, lambda = as.numeric(cvo$best_lambda), norm = norm,
+               predict = Xe, max_iter = max_iter, tol = tol,
+               step_factor = step_factor, verbose = verbose, crit = crit,
+               center = center, approx = approx, ini = ini)
+    pr <- .ate_outcome_predictions(ro)
+    if (length(pr) != 2L * m) {
+      stop("Outcome predict returned ", length(pr), " values, expected ",
+           2L * m, ".")
+    }
+    mu1[te] <- pr[seq_len(m)]; mu0[te] <- pr[(m + 1L):(2L * m)]
+  }
+
+  phi <- (A01 / pi1) * (Y - mu1) + mu1 -
+    ((1 - A01) / (1 - pi1)) * (Y - mu0) - mu0
+  psi <- mean(phi)
+  sigma <- sqrt(mean((phi - psi)^2))
+  z <- stats::qnorm(1 - alpha / 2)
+  half <- z * sigma / sqrt(n)
   list(
     estimate = as.numeric(psi),
     lower    = as.numeric(psi - half),

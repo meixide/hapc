@@ -10,6 +10,17 @@
 #' and per-fold optimisation pipeline.
 #'
 #' @inheritParams hapc
+#' @param family Character: \code{"gaussian"}, \code{"binomial"}, or
+#'   \code{"logit-hazard"}.  The last is a discrete-time \emph{logistic hazard}
+#'   model: the second argument \code{Y} is then the observed time
+#'   \eqn{T = \min(T^{event}, C)} and \code{Delta} (event indicator) must be
+#'   supplied; the call is forwarded to \code{\link{hazard.hapc}}.
+#' @param Delta Event indicator \eqn{\Delta \in \{0,1\}} of length
+#'   \code{nrow(X)}, required only when \code{family = "logit-hazard"}.
+#'   Ignored otherwise.
+#' @param time_grid Optional discrete time grid for
+#'   \code{family = "logit-hazard"} (see \code{\link{hazard.hapc}}). Ignored
+#'   otherwise.
 #' @param log_lambda_min Numeric; lower bound of the log-lambda grid. Default
 #'   \code{-5}.
 #' @param log_lambda_max Numeric; upper bound of the log-lambda grid. Default
@@ -55,7 +66,7 @@
 #'
 #' @export
 cv.hapc <- function(X, Y,
-                    family = c("gaussian", "binomial"),
+                    family = c("gaussian", "binomial", "logit-hazard"),
                     max_degree = 1L,
                     npcs = nrow(X),
                     log_lambda_min = -5,
@@ -71,12 +82,35 @@ cv.hapc <- function(X, Y,
                     crit = c("grad", "risk"),
                     center = TRUE,
                     approx = FALSE,
-                    ini = c("1", "2")) {
+                    ini = c("1", "2"),
+                    Delta = NULL,
+                    time_grid = NULL) {
 
   family <- match.arg(family)
   norm   <- match.arg(norm)
   crit   <- match.arg(crit)
   ini    <- match.arg(ini)
+
+  # family = "logit-hazard": discrete-time logistic hazard. The second positional
+  # argument Y carries the observed times T = min(T^event, C); the event
+  # indicator Delta must be supplied. norm = "sv" is not implemented (flagged
+  # inside hazard.hapc). See ?hazard.hapc.
+  if (identical(family, "logit-hazard")) {
+    if (is.null(Delta)) {
+      stop("family='logit-hazard' requires 'Delta' (event indicator); pass the ",
+           "observed times T as the second argument and Delta separately. ",
+           "See ?hazard.hapc.", call. = FALSE)
+    }
+    return(hazard.hapc(
+      X = X, T = Y, Delta = Delta, norm = norm,
+      max_degree = max_degree, npcs = if (missing(npcs)) NULL else npcs,
+      time_grid = time_grid,
+      log_lambda_min = log_lambda_min, log_lambda_max = log_lambda_max,
+      grid_length = grid_length, nfolds = nfolds,
+      predict = predict, center = center, verbose = verbose,
+      max_iter = max_iter, tol = tol, step_factor = step_factor
+    ))
+  }
 
   if (!is.matrix(X)) X <- as.matrix(X)
   storage.mode(X) <- "double"
