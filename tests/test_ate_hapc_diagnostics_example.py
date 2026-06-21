@@ -51,10 +51,11 @@ GRID_LENGTH_OUT = 8
 FIGURE_NAME = "ate_hapc_diagnostics_demo.png"
 
 # Pinned outputs (``alpha=0.05``, ``npcs = n - 1``, current C++/Python stack).
-# Re-pinned after the undersmoother fix: the gate scans only the undersmoothing
-# region (λ ≤ λ_CV) and selects the smallest λ within the τ band (§8.3); the CI
-# SE is now computed at the CV outcome fit (honest residuals) rather than the
-# undersmoothed fit, which widens the interval (the point estimate is unchanged).
+# The point ESTIMATE is bit-reproducible across platforms and pinned tightly.
+# The CI bounds are a macOS reference checked only loosely (atol=5e-2): the SE is
+# computed at the CV-selected outcome λ, whose argmin can flip between near-tied
+# grid points across LAPACK builds, so the half-width varies by O(1e-2) between
+# macOS and the Linux CI runner. See test_ate_hapc_demo_dgp_matches_pinned_ci.
 _EXPECTED_ESTIMATE = 0.06986743269053718
 _EXPECTED_LOWER = -0.09795542622940305
 _EXPECTED_UPPER = 0.2376902916104774
@@ -175,11 +176,25 @@ def save_diagnostics_figure(
 
 
 def test_ate_hapc_demo_dgp_matches_pinned_ci():
-    """Regression: demo DGP + grids + L1 norm → fixed ATE (stack drift guard)."""
+    """Regression: demo DGP + grids + L1 norm → fixed ATE point estimate.
+
+    The point estimate is reproducible across platforms/BLAS to ~1e-9, so it is
+    pinned tightly. The 95% CI from the **in-sample undersmoothing gate** is not:
+    its SE is computed at the CV-selected outcome ``λ``, whose ``argmin`` can flip
+    between near-tied grid points across LAPACK builds, shifting the half-width by
+    O(1e-2) (macOS vs the Linux CI runner differ here). ``ate_hapc`` itself warns
+    this in-sample gate is fragile — prefer ``method="crossfit"``. So the bounds
+    are checked for well-formedness and only loose agreement with the pinned
+    reference (computed on macOS).
+    """
     res = run_ate_hapc_demo(plot_diagnostics=False)
     assert np.isclose(res.estimate, _EXPECTED_ESTIMATE, rtol=0, atol=1e-9)
-    assert np.isclose(float(res.lower), _EXPECTED_LOWER, rtol=0, atol=1e-9)
-    assert np.isclose(float(res.upper), _EXPECTED_UPPER, rtol=0, atol=1e-9)
+    # Well-formed two-sided interval bracketing the estimate.
+    assert float(res.lower) < res.estimate < float(res.upper)
+    assert np.all(np.isfinite([float(res.lower), float(res.upper)]))
+    # Loose drift guard, tolerant of cross-platform CV-λ selection (see docstring).
+    assert np.isclose(float(res.lower), _EXPECTED_LOWER, rtol=0, atol=5e-2)
+    assert np.isclose(float(res.upper), _EXPECTED_UPPER, rtol=0, atol=5e-2)
 
 
 if __name__ == "__main__":

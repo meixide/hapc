@@ -1,23 +1,26 @@
-# Build the R reference site with pkgdown and publish it to the gh-pages branch.
-# Adapted from r-lib/actions; deploys the docs-r/ output (see _pkgdown.yml).
+# Build the R reference site with pkgdown and publish it via GitHub Pages using
+# the **artifact** deployment path — this does NOT create a gh-pages branch and
+# adds no bot commits to git history. Manual / release triggered only.
+#
+# Requires repo Settings -> Pages -> Source = "GitHub Actions".
 on:
-  push:
-    branches: [main, master]
+  workflow_dispatch:
   release:
     types: [published]
-  workflow_dispatch:
 
 name: pkgdown
 
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   pkgdown:
     runs-on: ubuntu-latest
-    # Only restrict concurrency for the deploy so PRs still build for checking.
-    concurrency:
-      group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -38,10 +41,11 @@ jobs:
         run: pkgdown::build_site(new_process = FALSE, install = FALSE)
         shell: Rscript {0}
 
-      - name: Deploy to GitHub Pages
-        if: github.event_name != 'pull_request'
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          clean: false
-          branch: gh-pages
-          folder: docs-r
+          path: docs-r
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
