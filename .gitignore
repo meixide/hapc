@@ -46,3 +46,6 @@ src/*.so
 docs/_build/
 docs/generated/
 docs-r/
+
+# Local scratch
+sticker_DELETE/
