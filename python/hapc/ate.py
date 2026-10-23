@@ -50,7 +50,7 @@ try:
 except ImportError as _e:  # pragma: no cover
     raise ImportError(
         "scipy is required for ate_hapc (used for normal quantiles). "
-        "It ships transitively with scikit-learn; run `pip install scipy`."
+        "It is a dependency of hapc; run `pip install scipy`."
     ) from _e
 
 from .cv import CVResult, cv_hapc

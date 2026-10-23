@@ -113,17 +113,18 @@ class CMakeBuild(build_ext):
 version = "0.1.0"
 init_file = Path(__file__).parent / "python" / "hapc" / "__init__.py"
 if init_file.exists():
-    with open(init_file, "r") as f:
+    with open(init_file, "r", encoding="utf-8") as f:
         for line in f:
             if line.startswith("__version__"):
                 version = line.split("=")[1].strip().strip('"').strip("'")
                 break
 
-# Try to read README
+# Try to read README (explicit UTF-8: the default on Windows is cp1252, which
+# cannot decode the README and aborts the wheel build before compiling)
 readme_content = ""
 readme_file = Path(__file__).parent / "README.md"
 if readme_file.exists():
-    with open(readme_file, "r") as f:
+    with open(readme_file, "r", encoding="utf-8") as f:
         readme_content = f.read()
 
 setup(

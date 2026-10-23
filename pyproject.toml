@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hapc"
-version = "2.7.0"
+version = "2.7.1"
 description = "Highly Adaptive Principal Components"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -23,7 +23,10 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.24,<2.3",
-    "scikit-learn>=1.0",
+    # scipy: normal quantiles in ate_hapc. scikit-learn is no longer needed
+    # (norm="1" uses its own glmnet-style solver since 2.7.0); dropping it also
+    # avoids scikit-learn >= 1.9, which has no manylinux2014 wheels.
+    "scipy>=1.9",
 ]
 
 [project.optional-dependencies]
@@ -41,10 +44,10 @@ Issues = "https://github.com/meixide/hapc/issues"
 build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
 skip = ["pp*", "*-musllinux*"]
 build-verbosity = 1
-# Smoke-test every wheel: install it (pulling numpy/scikit-learn) and import the
+# Smoke-test every wheel: install it (pulling numpy/scipy) and import the
 # compiled extension. Catches wrong-ABI / unresolved-symbol wheels before publish.
 test-command = "python -c \"import hapc; print(hapc.__version__)\""
-# NOTE: the latest scipy (transitive via scikit-learn) no longer ships a
+# NOTE: the latest scipy no longer ships a
 # manylinux2014 wheel, so the in-container smoke test would try to compile it
 # from source and fail. We force scipy to resolve from a binary wheel via
 # PIP_ONLY_BINARY=scipy, set in the workflow and passed into the Linux container

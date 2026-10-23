@@ -6,6 +6,8 @@ A fast and flexible machine learning library for nonparametric high-dimensional 
 
 Code written for hapc ≤ 2.6.0 that uses `family = "binomial"` must be checked. R and Python behave identically.
 
+2.7.0 was tagged but never reached PyPI (the wheel build failed). **2.7.1 is the first published release with these changes.** It also replaces the `scikit-learn` dependency by `scipy`: the package no longer uses scikit-learn.
+
 | What | ≤ 2.6.0 | 2.7.0 |
 |---|---|---|
 | Binomial `predictions` from `hapc()` | log-odds for `norm = "1"` and `"2"`, probabilities for `"sv"` | **always probabilities**; the linear predictor is in `log_odds` (`cv.hapc` / `cv_hapc` already returned probabilities and still do) |
