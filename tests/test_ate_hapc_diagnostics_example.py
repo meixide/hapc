@@ -56,9 +56,11 @@ FIGURE_NAME = "ate_hapc_diagnostics_demo.png"
 # computed at the CV-selected outcome λ, whose argmin can flip between near-tied
 # grid points across LAPACK builds, so the half-width varies by O(1e-2) between
 # macOS and the Linux CI runner. See test_ate_hapc_demo_dgp_matches_pinned_ci.
-_EXPECTED_ESTIMATE = 0.06986743269053718
-_EXPECTED_LOWER = -0.09795542622940305
-_EXPECTED_UPPER = 0.2376902916104774
+# Re-pinned when the binomial norm="1" propensity fit gained an unpenalised
+# intercept (previously 0.06986743269053718 / -0.0979554 / 0.2376903).
+_EXPECTED_ESTIMATE = 0.06976944311868132
+_EXPECTED_LOWER = -0.09871893883743997
+_EXPECTED_UPPER = 0.2382578250748026
 
 
 def _expit(x: np.ndarray) -> np.ndarray:

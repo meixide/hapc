@@ -310,7 +310,7 @@ def _ate_crossfit(
             lambda_=float(cv_prop.best_lambda), norm=norm, predict=Xte,
             **fit_kwargs,
         )
-        pi1[te] = np.clip(np.asarray(prop.probabilities).ravel(), 1e-8, 1 - 1e-8)
+        pi1[te] = np.clip(np.asarray(prop.predictions).ravel(), 1e-8, 1 - 1e-8)
 
         # --- outcome: CV + refit on training folds, predict both arms ---------
         Xout_tr = np.column_stack([A01[tr], Xtr])
@@ -567,7 +567,7 @@ def ate_hapc(X: np.ndarray, Y: np.ndarray, A: np.ndarray,
         max_iter=max_iter, tol=tol, step_factor=step_factor,
         verbose=verbose, crit=crit, center=center, approx=approx, ini=ini,
     )
-    pi1 = np.clip(np.asarray(prop.probabilities).ravel(), 1e-8, 1 - 1e-8)
+    pi1 = np.clip(np.asarray(prop.predictions).ravel(), 1e-8, 1 - 1e-8)
 
     # --- 2. CV outcome (gaussian on [A,W]) ---------------------------------
     Xout = np.column_stack([A01, X])

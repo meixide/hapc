@@ -2,6 +2,26 @@
 
 A fast and flexible machine learning library for nonparametric high-dimensional regression and classification with guarantees.
 
+## ⚠️ Breaking changes in 2.7.0 (read first — humans and coding agents)
+
+Code written for hapc ≤ 2.6.0 that uses `family = "binomial"` must be checked. R and Python behave identically.
+
+| What | ≤ 2.6.0 | 2.7.0 |
+|---|---|---|
+| Binomial `predictions` from `hapc()` | log-odds for `norm = "1"` and `"2"`, probabilities for `"sv"` | **always probabilities**; the linear predictor is in `log_odds` (`cv.hapc` / `cv_hapc` already returned probabilities and still do) |
+| `probabilities`, `predicted_classes` fields | present in some paths | **removed**: use `predictions` (and `predictions > 0.5` if classes are needed) |
+| Intercept of binomial fits | fitted with the intercept fixed at 0, then calibrated afterwards (biased for unbalanced outcomes) | **always an unpenalised intercept estimated jointly**, in every norm |
+| `intercept` argument | `intercept = FALSE` allowed (R, `norm = "1"`) | default `NULL`/`None`; `intercept = FALSE` is an **error** for binomial / logit-hazard; for gaussian it must agree with `center` (`center = TRUE` ⇔ intercept) |
+| `norm = "2"` logistic ridge λ | effective penalty λ‖β‖² | glmnet's scale, `-(1/n)·loglik + (λ/2)‖β‖²` (same as `glmnet(alpha = 0)`): λ values from 2.6.0 are not comparable |
+| `norm = "1"` binomial basis | built from the full HAL design (memory O(n²·Σ C(p,k))) and rebuilt for every fold × λ | built from the n×n kernel once per fold; λ along a warm-started path |
+| Python `norm = "1"` solver | sklearn `liblinear` | glmnet's algorithm (IRLS + coordinate descent, no sklearn); `max_iter` now counts IRLS steps (default 100) |
+| Grid edges (`norm = "1"`; also `"sv"`/`"2"` in R) | — | `extend_grid = k` extends the λ grid at either edge; results report `lambda_position` (`interior`, `lower_edge`, `upper_edge`, `null_model`), `n_extend`, `lambda_max` |
+| Kernel / cross-kernel | single-threaded | multi-threaded, bit-identical results; set the thread count with the env var `HAPC_NUM_THREADS` |
+| `.Call("logistic_call")` (R, unexported) | present | removed (dead code) |
+
+Migration: replace `fit$probabilities` / `fit.probabilities` by `predictions`, replace `predictions` used as log-odds by `log_odds`, and drop any `intercept = FALSE`.
+The binomial `norm = "sv"` and `norm = "2"` paths are still pending a full review: they still materialise the HAL design and do not scale to n ≈ 2000 with p ≈ 30. Prefer `norm = "1"`.
+
 ## Documentation
 
 - **Python API** (rendered from docstrings): https://hapc.readthedocs.io —

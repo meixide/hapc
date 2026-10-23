@@ -70,7 +70,8 @@ set(HAPC_CORE_SOURCES
 
 # Python module
 pybind11_add_module(hapc_core src/bindings.cpp ${HAPC_CORE_SOURCES})
-target_link_libraries(hapc_core PRIVATE Eigen3::Eigen)
+find_package(Threads REQUIRED)
+target_link_libraries(hapc_core PRIVATE Eigen3::Eigen Threads::Threads)
 target_include_directories(hapc_core PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")

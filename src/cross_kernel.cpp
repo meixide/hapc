@@ -11,53 +11,12 @@ MatrixXd kernel_cross_call(const MatrixXd& Xtr, const MatrixXd& Xte, int m, bool
     if (m < 0) m = 0;
     if (m > p) m = p;
     
-    std::vector<double> psum(p + 1, 0.0);
-    psum[0] = 1.0;
-    for (int g = 1; g <= p; ++g) {
-        const int kmax = std::min(g, m);
-        double sum = 1.0;
-        double binom = 1.0;
-        for (int k = 1; k <= kmax; ++k) {
-            binom = binom * (g - k + 1) / k;
-            sum += binom;
-        }
-        psum[g] = sum;
-    }
-    
-    MatrixXd K = MatrixXd::Zero(m_test, n);
-    
-    for (int t = 0; t < m_test; ++t) {
-        for (int b = 0; b < n; ++b) {
-            double s = 0.0;
-            for (int i = 0; i < n; ++i) {
-                int g = 0;
-                for (int j = 0; j < p; ++j) {
-                    double thr = std::min(Xte(t, j), Xtr(b, j));
-                    if (Xtr(i, j) <= thr) ++g;
-                }
-                s += psum[g] - 1.0;
-            }
-            K(t, b) = s;
-        }
-    }
+    // Uncentred cross kernel; with centring, the training kernel is needed
+    // only for its column means.
+    MatrixXd K = hal_kernel_uncentered(Xtr, Xte, Xtr, m, false);
     
     if (center) {
-        MatrixXd Ktrain = MatrixXd::Zero(n, n);
-        for (int a = 0; a < n; ++a) {
-            for (int b = a; b < n; ++b) {
-                double s = 0.0;
-                for (int i = 0; i < n; ++i) {
-                    int g = 0;
-                    for (int j = 0; j < p; ++j) {
-                        double thr = std::min(Xtr(a, j), Xtr(b, j));
-                        if (Xtr(i, j) <= thr) ++g;
-                    }
-                    s += psum[g] - 1.0;
-                }
-                Ktrain(a, b) = s;
-                if (a != b) Ktrain(b, a) = s;
-            }
-        }
+        MatrixXd Ktrain = hal_kernel_uncentered(Xtr, Xtr, Xtr, m, true);
         
         std::vector<double> colmean_train(n, 0.0);
         double grand_train = 0.0;

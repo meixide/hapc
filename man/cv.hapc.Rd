@@ -25,7 +25,9 @@ cv.hapc(
   approx = FALSE,
   ini = c("1", "2"),
   Delta = NULL,
-  time_grid = NULL
+  time_grid = NULL,
+  intercept = TRUE,
+  extend_grid = 0L
 )
 }
 \arguments{
@@ -64,9 +66,11 @@ Default \code{1L} (additive HAL).}
 the loss is always logistic: \code{"sv"} = PGD on logistic loss with
 sectional-variation projection, \code{"2"} = logistic ridge (Newton-
 Raphson IRLS, no PGD), \code{"1"} = logistic LASSO via
-\code{glmnet::glmnet(..., family = "binomial", alpha = 1,
-intercept = FALSE)} on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
-(requires the \code{glmnet} package).}
+\code{glmnet::glmnet(..., family = "binomial", alpha = 1)} with an
+unpenalised intercept on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
+(requires the \code{glmnet} package; see \code{intercept}). U and d
+come from the eigendecomposition of the n x n HAL kernel, so the HAL
+design itself is never materialised.}
 
 \item{predict}{Optional numeric matrix of new observations (same number of
 columns as \code{X}). If supplied, predictions are returned in the result.}
@@ -105,11 +109,40 @@ Ignored otherwise.}
 \item{time_grid}{Optional discrete time grid for
 \code{family = "logit-hazard"} (see \code{\link{hazard.hapc}}). Ignored
 otherwise.}
+
+\item{intercept}{Logical; only used when \code{family = "binomial"} and
+\code{norm = "1"}. \code{TRUE} (default) fits an unpenalised intercept
+jointly with the L1-penalised PC coefficients (standard logistic LASSO).
+\code{FALSE} reproduces the behaviour of hapc <= 2.6.0: the L1 path is
+fitted with the intercept fixed at 0 and the intercept is calibrated
+afterwards. Centring makes the PC columns orthogonal to 1, which removes
+the intercept from least squares but not from logistic regression: with
+\code{FALSE} the coefficients are fitted around p = 1/2 instead of the
+prevalence, which degrades the fit for unbalanced outcomes. Kept only
+for reproducibility. The \code{"sv"} and \code{"2"} binomial paths
+always fit an unpenalised intercept.}
+
+\item{extend_grid}{Integer; only used when \code{family = "binomial"}. If
+the CV-optimal lambda is on an edge of the grid, the grid is extended on
+that side (same log spacing, another \code{grid_length} points) up to
+\code{extend_grid} times. For \code{norm = "1"} the upper extension stops
+at \code{lambda_max} (the smallest lambda giving the intercept-only fit);
+for \code{norm \%in\% c("sv", "2")} the CV is rerun on the extended grid.
+Default \code{0L} (no extension). A warning is issued if the optimum is
+still on an edge after the extensions. R-only option.}
 }
 \value{
 A list with elements \code{mses} / \code{deviances} (binomial),
   \code{lambdas}, \code{best_lambda}, \code{res_opt} (refit on full data),
-  and \code{predictions} when \code{predict} is non-NULL.
+  and \code{predictions} when \code{predict} is non-NULL. For
+  \code{family = "binomial"}, \code{norm = "1"} also \code{best_index},
+  \code{lambda_position} (\code{"interior"}, \code{"lower_edge"},
+  \code{"upper_edge"} of the final grid, or \code{"null_model"} when the
+  optimum is \code{lambda_max}), \code{n_extend} (number of grid
+  extensions), \code{lambda_max} and \code{res_opt$intercept}. For
+  \code{family = "binomial"}, \code{norm \%in\% c("sv", "2")} and
+  \code{extend_grid > 0}, also \code{best_index}, \code{lambda_position}
+  and \code{n_extend}.
 }
 \description{
 k-fold cross-validation over a log-spaced grid of \code{lambda} values for
@@ -134,15 +167,19 @@ with logistic loss):
     PGD on squared error per fold; \code{norm \%in\% c("1","2")} → closed
     form LASSO/ridge in PC basis, MSE per fold.}
   \item{\code{family = "binomial"}, \code{norm = "sv"}}{Logistic ridge init +
-    projected gradient descent on logistic loss per fold; logistic deviance
+    projected gradient descent on logistic loss per fold, with an
+    unpenalised intercept profiled out at every step; logistic deviance
     scoring.}
   \item{\code{family = "binomial"}, \code{norm = "2"}}{Logistic ridge only
-    (no PGD) per fold; logistic deviance scoring.}
+    (no PGD) per fold, with an unpenalised intercept; logistic deviance
+    scoring.}
   \item{\code{family = "binomial"}, \code{norm = "1"}}{Logistic LASSO via
     \code{glmnet} (\code{family = "binomial"}, \code{alpha = 1},
-    \code{intercept = FALSE}) on \eqn{\tilde{X} = U \cdot
-    \mathrm{diag}(d)} per fold; logistic deviance scoring. Requires the
-    \code{glmnet} package (in \code{Suggests}).}
+    unpenalised intercept unless \code{intercept = FALSE}) on
+    \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)} per fold; logistic
+    deviance scoring. U and d are computed once per fold from the HAL
+    kernel and \code{glmnet} fits the whole lambda grid on them. Requires
+    the \code{glmnet} package (in \code{Suggests}).}
 }
 }
 \examples{

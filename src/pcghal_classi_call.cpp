@@ -26,9 +26,37 @@ OptimizerOutput pcghal_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
     VectorXd alpha = alpha0;
     VectorXd mu(n), g(k), beta(q), a(k), g_tan(k);
     VectorXd sgn(q), Vt_s(k), gt_alpha(k), numer(q);
-    
+
+    // Unpenalised intercept, profiled out: for each alpha the risk and its
+    // gradient are evaluated at b*(alpha) = argmin_b risk(Xtilde alpha + b),
+    // found by Newton (warm-started from the previous b*).  By the envelope
+    // theorem the gradient of the profiled risk is the partial gradient at
+    // b*, so the PGD below is the joint (alpha, b) optimisation with the
+    // constraint acting on alpha only.  Callers recover b* afterwards with
+    // calibrate_logistic_intercept() on Xtilde * alpha.
+    VectorXd y01 = (Y.array() + 1.0) / 2.0;
+    double b0 = 0.0;
+    {
+        const double ybar = std::min(1.0 - 1e-6, std::max(1e-6, y01.mean()));
+        b0 = std::log(ybar / (1.0 - ybar));
+    }
+    auto add_intercept = [&](VectorXd& m) {
+        for (int it = 0; it < 50; ++it) {
+            double gsum = 0.0, hsum = 0.0;
+            for (int i = 0; i < n; ++i) {
+                const double p = 1.0 / (1.0 + std::exp(-(m[i] + b0)));
+                gsum += p - y01[i];
+                hsum += p * (1.0 - p);
+            }
+            if (std::abs(gsum) < 1e-10 || hsum < 1e-12) break;
+            b0 -= gsum / hsum;
+        }
+        m.array() += b0;
+    };
+
     auto risk = [&](const VectorXd& alph)->double {
         mu.noalias() = Xtilde * alph;
+        add_intercept(mu);
         double sum = 0.0;
         for (int i = 0; i < n; ++i) {
             double ymu = Y[i] * mu[i];
@@ -43,6 +71,7 @@ OptimizerOutput pcghal_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
     
     auto grad = [&](const VectorXd& alph)->VectorXd {
         mu.noalias() = Xtilde * alph;
+        add_intercept(mu);
         VectorXd gtmp(k);
         
         for (int j = 0; j < k; ++j) {

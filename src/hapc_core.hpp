@@ -28,6 +28,11 @@ DesignOutput pchal_des(const MatrixXd& X, int maxdeg, int npc, bool center);
 VectorXd ridge_call(const VectorXd& Y, const MatrixXd& U, const VectorXd& D2, double lambda);
 MatrixXd mkernel_call(const MatrixXd& X, int m, bool center);
 MatrixXd kernel_cross_call(const MatrixXd& Xtr, const MatrixXd& Xte, int m, bool center);
+// Uncentred HAL kernel between rows of Xa and Xb with knots at rows of Xtr
+// (multi-threaded; HAPC_NUM_THREADS overrides the thread count).
+MatrixXd hal_kernel_uncentered(const MatrixXd& Xtr, const MatrixXd& Xa,
+                               const MatrixXd& Xb, int m, bool symmetric);
+int hapc_num_threads();
 OptimizerOutput pcghal_call(const VectorXd& Y, const MatrixXd& Xtilde, 
                             const MatrixXd& ENn, const VectorXd& alpha0,
                             int max_iter, double tol, double step_factor, 
@@ -86,9 +91,10 @@ FastCVOutput fasthal_cv_python(const MatrixXd& X, const VectorXd& Y, int npc,
                                 const MatrixXd& predict, int maxdeg,
                                 bool center, bool approx, bool l1);
 
-// Pure C++ Newton-Raphson logistic ridge initializer.
-// Y must contain values in {-1, +1}. lambda is the *unscaled* penalty
-// (internally multiplied by n, matching logistic_call).
+// Pure C++ Newton-Raphson logistic ridge with an unpenalised intercept
+// (only the slopes are returned). Y must contain values in {-1, +1}.
+// Objective as glmnet(alpha = 0, standardize = FALSE):
+// -(1/n) loglik + (lambda / 2) ||beta||^2.
 VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double lambda);
 
 // Soft-label variant: target `y01` may take any value in [0, 1] (hard {0,1}

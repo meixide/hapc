@@ -20,7 +20,8 @@ hapc(
   crit = c("grad", "risk"),
   center = TRUE,
   approx = FALSE,
-  ini = c("1", "2")
+  ini = c("1", "2"),
+  intercept = TRUE
 )
 }
 \arguments{
@@ -49,9 +50,11 @@ Default \code{1L} (additive HAL).}
 the loss is always logistic: \code{"sv"} = PGD on logistic loss with
 sectional-variation projection, \code{"2"} = logistic ridge (Newton-
 Raphson IRLS, no PGD), \code{"1"} = logistic LASSO via
-\code{glmnet::glmnet(..., family = "binomial", alpha = 1,
-intercept = FALSE)} on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
-(requires the \code{glmnet} package).}
+\code{glmnet::glmnet(..., family = "binomial", alpha = 1)} with an
+unpenalised intercept on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
+(requires the \code{glmnet} package; see \code{intercept}). U and d
+come from the eigendecomposition of the n x n HAL kernel, so the HAL
+design itself is never materialised.}
 
 \item{predict}{Optional numeric matrix of new observations (same number of
 columns as \code{X}). If supplied, predictions are returned in the result.}
@@ -82,6 +85,18 @@ Default \code{TRUE}.}
 \item{ini}{Character; initialiser for the projected-gradient solver when
 \code{norm = "sv"}: \code{"1"} = LASSO via \code{fast_pchal_call}
 (default, matches Python), \code{"2"} = ridge via \code{ridge_call}.}
+
+\item{intercept}{Logical; only used when \code{family = "binomial"} and
+\code{norm = "1"}. \code{TRUE} (default) fits an unpenalised intercept
+jointly with the L1-penalised PC coefficients (standard logistic LASSO).
+\code{FALSE} reproduces the behaviour of hapc <= 2.6.0: the L1 path is
+fitted with the intercept fixed at 0 and the intercept is calibrated
+afterwards. Centring makes the PC columns orthogonal to 1, which removes
+the intercept from least squares but not from logistic regression: with
+\code{FALSE} the coefficients are fitted around p = 1/2 instead of the
+prevalence, which degrades the fit for unbalanced outcomes. Kept only
+for reproducibility. The \code{"sv"} and \code{"2"} binomial paths
+always fit an unpenalised intercept.}
 }
 \value{
 A named list whose structure depends on \code{family} and
@@ -99,7 +114,8 @@ A named list whose structure depends on \code{family} and
     \code{risk}, \code{iter = 0}, optional \code{predictions} / class
     outputs.}
   \item{binomial, \code{norm = "1"}}{Logistic LASSO (\code{glmnet}):
-    \code{alpha}, \code{lambda}, \code{risk}, \code{iter = 0L}, and
+    \code{alpha}, \code{intercept}, \code{lambda}, \code{risk},
+    \code{iter = 0L}, and
     optional \code{predictions} (log-odds), \code{probabilities},
     \code{predicted_classes}.}
 }

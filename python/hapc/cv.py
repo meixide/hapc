@@ -20,6 +20,10 @@ from . import hapc_core
 from .core import _C, cross_kernel_hapc, design_hapc
 from .single import (
     _check_binomial_labels,
+    _check_intercept,
+    _lasso_basis,
+    _lasso_path,
+    _lasso_predictor,
     _to_soft01,
     single_pcghal_classification_lasso,
 )
@@ -50,6 +54,12 @@ class CVResult(NamedTuple):
     best_lambda: float
     best_model_alpha: np.ndarray
     predictions: Optional[np.ndarray]
+    # binomial norm="1" only (None elsewhere):
+    best_index: Optional[int] = None
+    lambda_position: Optional[str] = None  # interior / lower_edge / upper_edge / null_model
+    n_extend: Optional[int] = None
+    lambda_max: Optional[float] = None
+    intercept: Optional[float] = None
 
 
 def _grid(lambdas: Optional[np.ndarray], log_lambda_min: float,
@@ -317,7 +327,7 @@ def pcghal_cv_classi(X: np.ndarray, Y: np.ndarray,
 
 
 # ---------------------------------------------------------------------------
-# norm="1" (binomial)  →  glmnet-style logistic LASSO CV (sklearn liblinear)
+# norm="1" (binomial)  →  glmnet-style logistic LASSO CV
 # ---------------------------------------------------------------------------
 
 def _native_folds(n: int, K: int, seed: int = 12345) -> np.ndarray:
@@ -350,14 +360,15 @@ def pcghal_cv_classi_lasso(X: np.ndarray, Y: np.ndarray,
                             predict: Optional[np.ndarray] = None,
                             center: bool = True,
                             verbose: bool = False,
-                            max_iter: int = 1000) -> CVResult:
+                            max_iter: int = 100,
+                            extend_grid: int = 0) -> CVResult:
     """k-fold logistic-LASSO CV for binomial HAPC, ``norm="1"``.
 
-    Per fold, fits :func:`hapc.single_pcghal_classification_lasso` (sklearn
-    LogisticRegression with ``penalty="l1"``, ``solver="liblinear"``,
-    ``fit_intercept=False``) on the training portion and scores the held-out
-    portion with logistic deviance. Mirrors R ``cv.hapc(family="binomial",
-    norm="1")``, which uses ``glmnet`` per fold.
+    Per fold, the kernel PC basis is computed once and the L1 logistic
+    regression with unpenalised intercept is fitted along the whole λ grid
+    with warm starts; held-out folds are scored with cross-entropy. Mirrors R
+    ``cv.hapc(family="binomial", norm="1")`` (glmnet per fold), including
+    ``extend_grid`` and the ``lambda_position`` report.
 
     Parameters
     ----------
@@ -366,9 +377,11 @@ def pcghal_cv_classi_lasso(X: np.ndarray, Y: np.ndarray,
     Returns
     -------
     CVResult
-        ``mses`` holds mean per-fold logistic deviance. ``best_model_alpha``
-        is the LASSO α refit on the full data at ``best_lambda``.
-        ``predictions`` are probabilities at ``best_lambda`` on ``predict``.
+        ``mses`` holds mean per-fold cross-entropy. ``best_model_alpha`` is the
+        α refit on the full data at ``best_lambda`` (``intercept`` its
+        intercept). ``predictions`` are probabilities at ``best_lambda`` on
+        ``predict``. ``lambda_position`` is ``"interior"``, ``"lower_edge"``,
+        ``"upper_edge"`` or ``"null_model"`` (optimum at ``lambda_max``).
     """
     X = _C(X)
     Y = _C(Y).ravel()
@@ -376,38 +389,82 @@ def pcghal_cv_classi_lasso(X: np.ndarray, Y: np.ndarray,
     if Y.size != n:
         raise ValueError(f"Y must have {n} elements, got {Y.size}")
 
-    lams = _grid(lambdas, log_lambda_min, log_lambda_max, grid_length)
+    lams = np.sort(_grid(lambdas, log_lambda_min, log_lambda_max, grid_length))
     if not np.all(lams > 0):
         raise ValueError("All lambdas must be > 0 for logistic LASSO.")
+    L0 = lams.size
 
-    # Soft target in [0,1] used for the held-out cross-entropy deviance
-    # (accepts hard {0,1}/{-1,+1} or fractional EM-HAL posteriors).
+    # Soft target in [0,1] for the fit and the held-out cross-entropy.
     q = _to_soft01(Y)
     folds = _native_folds(n, int(nfolds))
-    L = lams.size
-    fold_dev = np.full((int(nfolds), L), np.nan)
 
+    fold_data = []
     for k in range(1, int(nfolds) + 1):
         te = np.where(folds == k)[0]
         tr = np.where(folds != k)[0]
         if te.size == 0 or tr.size == 0:
+            fold_data.append(None)
             continue
-        Xtr, Ytr = X[tr], Y[tr]
-        Xte, Yte = X[te], q[te]
+        basis = _lasso_basis(X[tr], int(max_degree), int(npcs), bool(center))
+        fold_data.append(dict(Xt=basis.xtilde, q=q[tr], q_te=q[te],
+                              P=_lasso_predictor(basis, X[te])))
 
-        for j, lam in enumerate(lams):
-            res = single_pcghal_classification_lasso(
-                Xtr, Ytr, max_degree=int(max_degree), npcs=int(npcs),
-                lambda_=float(lam), predict=Xte, center=bool(center),
-                verbose=bool(verbose), max_iter=int(max_iter),
-            )
-            probs = np.clip(res.probabilities, 1e-15, 1 - 1e-15)
-            dev = -(Yte * np.log(probs) + (1 - Yte) * np.log(1 - probs))
-            fold_dev[k - 1, j] = float(dev.mean())
+    def cv_dev(ls: np.ndarray) -> np.ndarray:
+        dev = np.full((len(fold_data), ls.size), np.nan)
+        for f, fd in enumerate(fold_data):
+            if fd is None:
+                continue
+            B, b0, _ = _lasso_path(fd["Xt"], fd["q"], ls, max_iter)
+            eta = fd["P"] @ B + b0[None, :]
+            pr = np.clip(1.0 / (1.0 + np.exp(-eta)), 1e-15, 1 - 1e-15)
+            qt = fd["q_te"][:, None]
+            dev[f] = (-(qt * np.log(pr) + (1 - qt) * np.log(1 - pr))).mean(axis=0)
+        return np.nanmean(dev, axis=0)
 
-    deviances = np.nanmean(fold_dev, axis=0)
+    deviances = cv_dev(lams)
+
+    # lambda_max: at the intercept-only fit the gradient of the mean loss
+    # w.r.t. alpha is Xt'(q - mean(q)) / n; the largest over folds.
+    lambda_max = max(
+        float(np.abs(fd["Xt"].T @ (fd["q"] - fd["q"].mean())).max()) / fd["q"].size
+        for fd in fold_data if fd is not None
+    )
+    step = float(np.log(lams[1]) - np.log(lams[0])) if L0 > 1 else float(np.log(10))
+    n_extend = 0
+    while n_extend < int(extend_grid):
+        b = int(np.nanargmin(deviances))
+        if b == 0:
+            extra = np.exp(np.log(lams[0]) - step * np.arange(L0, 0, -1))
+            deviances = np.concatenate([cv_dev(extra), deviances])
+            lams = np.concatenate([extra, lams])
+        elif b == lams.size - 1 and lams.size > 1 and lams[-1] < lambda_max:
+            extra = np.exp(np.log(lams[-1]) + step * np.arange(1, L0 + 1))
+            extra = np.append(extra[extra < lambda_max], lambda_max)
+            deviances = np.concatenate([deviances, cv_dev(extra)])
+            lams = np.concatenate([lams, extra])
+        else:
+            break
+        n_extend += 1
+
     best_idx = int(np.nanargmin(deviances))
     best_lambda = float(lams[best_idx])
+    L = lams.size
+    if L == 1:
+        position = None
+    elif best_lambda >= lambda_max * (1 - 1e-8):
+        position = "null_model"
+    elif best_idx == 0:
+        position = "lower_edge"
+    elif best_idx == L - 1:
+        position = "upper_edge"
+    else:
+        position = "interior"
+    if int(extend_grid) > 0 and position in ("lower_edge", "upper_edge"):
+        import warnings
+        warnings.warn(
+            f"cv_hapc(family='binomial', norm='1'): the CV-optimal lambda is still "
+            f"on the {position.split('_')[0]} edge of the grid after {n_extend} "
+            "extension(s).", stacklevel=2)
 
     full = single_pcghal_classification_lasso(
         X, Y, max_degree=int(max_degree), npcs=int(npcs),
@@ -415,14 +472,17 @@ def pcghal_cv_classi_lasso(X: np.ndarray, Y: np.ndarray,
         verbose=bool(verbose), max_iter=int(max_iter),
     )
 
-    predictions = full.probabilities if predict is not None else None
-
     return CVResult(
         mses=np.asarray(deviances),
         lambdas=np.asarray(lams),
         best_lambda=best_lambda,
         best_model_alpha=np.asarray(full.alpha),
-        predictions=predictions,
+        predictions=full.predictions if predict is not None else None,
+        best_index=best_idx,
+        lambda_position=position,
+        n_extend=n_extend,
+        lambda_max=float(lambda_max),
+        intercept=full.intercept,
     )
 
 
@@ -449,7 +509,9 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
             approx: bool = False,
             ini: str = "1",
             Delta: Optional[np.ndarray] = None,
-            time_grid: Optional[np.ndarray] = None) -> CVResult:
+            time_grid: Optional[np.ndarray] = None,
+            intercept: Optional[bool] = None,
+            extend_grid: int = 0) -> CVResult:
     """k-fold cross-validated HAPC fit (Python counterpart of R ``cv.hapc()``).
 
     Parameters
@@ -462,9 +524,9 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
         Loss family. For ``"binomial"`` the loss is **always logistic** (deviance
         CV, not MSE). ``norm="sv"`` runs logistic ridge + PGD per fold;
         ``norm="2"`` runs logistic ridge only; ``norm="1"`` runs logistic
-        LASSO via ``sklearn.linear_model.LogisticRegression`` with
-        ``solver="liblinear"`` (mirrors R ``glmnet`` for the binomial+norm="1"
-        path). ``"logit-hazard"`` is a discrete-time logistic hazard model: ``Y``
+        LASSO with an unpenalised intercept by glmnet's algorithm (mirrors R
+        ``glmnet`` for the binomial+norm="1" path). Every binomial fit has an
+        unpenalised intercept. ``"logit-hazard"`` is a discrete-time logistic hazard model: ``Y``
         is then the observed time ``T = min(T_event, C)``, ``Delta`` (event
         indicator) is required, and the call forwards to
         :func:`hapc.hazard_hapc` (returning a :class:`hapc.hazard.HazardResult`,
@@ -474,6 +536,18 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
     time_grid : np.ndarray, optional
         Discrete time grid for ``family="logit-hazard"`` (see
         :func:`hapc.hazard_hapc`).
+    intercept : bool or None, default None
+        Every binomial fit includes an unpenalised intercept estimated jointly
+        with the PC coefficients, so ``intercept=False`` raises for
+        ``family="binomial"`` / ``"logit-hazard"``. For ``family="gaussian"``
+        the intercept is fitted exactly when ``center=True``; an explicit value
+        contradicting ``center`` raises. ``None`` means "the intercept the
+        model fits".
+    extend_grid : int, default 0
+        ``family="binomial"``, ``norm="1"`` only: if the CV-optimal λ is on an
+        edge of the grid, extend the grid on that side (same log spacing,
+        another ``grid_length`` points) up to ``extend_grid`` times; upwards
+        never past ``lambda_max`` (the intercept-only fit). Mirrors R.
     max_degree : int, default 1
         Maximum interaction order.
     npcs : int, optional
@@ -508,6 +582,7 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
     >>> bool(cv.best_lambda > 0)
     True
     """
+    _check_intercept(intercept, family, center)
     # family = "logit-hazard": discrete-time logistic hazard. The second
     # positional argument Y carries the observed times T = min(T^event, C); the
     # event indicator Delta must be supplied. norm = "sv" is flagged inside
@@ -552,7 +627,7 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
             return pcghal_cv_classi_lasso(
                 X, Y, max_degree=max_degree, npcs=npcs,
                 lambdas=lams, nfolds=nfolds, predict=predict,
-                center=center, verbose=verbose,
+                center=center, verbose=verbose, extend_grid=extend_grid,
             )
         raise ValueError(
             f"family='binomial' supports norm in {{'sv','1','2'}}; got '{norm}'"

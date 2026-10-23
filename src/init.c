@@ -18,7 +18,6 @@ extern SEXP pcghal_call(SEXP, SEXP, SEXP, SEXP,
                              SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP pchal_des(SEXP, SEXP, SEXP, SEXP);
 extern SEXP ridge_call(SEXP, SEXP, SEXP, SEXP);
-extern SEXP logistic_call(SEXP, SEXP, SEXP);
 extern SEXP pcghal_classi_call(SEXP, SEXP, SEXP, SEXP,
                                     SEXP, SEXP, SEXP, SEXP);
 extern SEXP single_pcghal_call(SEXP, SEXP, SEXP, SEXP,
@@ -40,7 +39,6 @@ static const R_CallMethodDef CallEntries[] = {
   {"pcghal_call", (DL_FUNC) &pcghal_call, 9},
   {"pchal_des", (DL_FUNC) &pchal_des, 4},
   {"ridge_call", (DL_FUNC) &ridge_call, 4},
-  {"logistic_call", (DL_FUNC) &logistic_call, 3},
   {"pcghal_classi_call", (DL_FUNC) &pcghal_classi_call, 8},
   {"single_pcghal_call", (DL_FUNC) &single_pcghal_call, 13},
   {"single_pcghal_classi_ridge_call", (DL_FUNC) &single_pcghal_classi_ridge_call, 7},

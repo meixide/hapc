@@ -328,7 +328,7 @@ def hazard_hapc(X: np.ndarray, T: np.ndarray, Delta: np.ndarray,
             predict=newXpp, center=center, verbose=verbose,
             max_iter=max_iter, tol=tol, step_factor=step_factor,
         )
-        haz = np.asarray(fit.probabilities, dtype=np.float64).reshape(m, K)
+        haz = np.asarray(fit.predictions, dtype=np.float64).reshape(m, K)
         predict_hazard = haz
         predict_survival = np.cumprod(1.0 - haz, axis=1)
 

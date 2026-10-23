@@ -30,9 +30,11 @@
 #'   the loss is always logistic: \code{"sv"} = PGD on logistic loss with
 #'   sectional-variation projection, \code{"2"} = logistic ridge (Newton-
 #'   Raphson IRLS, no PGD), \code{"1"} = logistic LASSO via
-#'   \code{glmnet::glmnet(..., family = "binomial", alpha = 1,
-#'   intercept = FALSE)} on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
-#'   (requires the \code{glmnet} package).
+#'   \code{glmnet::glmnet(..., family = "binomial", alpha = 1)} with an
+#'   unpenalised intercept on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
+#'   (requires the \code{glmnet} package; see \code{intercept}). U and d
+#'   come from the eigendecomposition of the n x n HAL kernel, so the HAL
+#'   design itself is never materialised.
 #' @param predict Optional numeric matrix of new observations (same number of
 #'   columns as \code{X}). If supplied, predictions are returned in the result.
 #' @param max_iter Integer; maximum projected-gradient iterations (only used
@@ -54,6 +56,13 @@
 #' @param ini Character; initialiser for the projected-gradient solver when
 #'   \code{norm = "sv"}: \code{"1"} = LASSO via \code{fast_pchal_call}
 #'   (default, matches Python), \code{"2"} = ridge via \code{ridge_call}.
+#' @param intercept \code{NULL} (default), \code{TRUE} or \code{FALSE}.
+#'   Every binomial fit includes an unpenalised intercept estimated jointly
+#'   with the PC coefficients, so \code{intercept = FALSE} is an error for
+#'   \code{family = "binomial"}. For \code{family = "gaussian"} the intercept
+#'   is fitted exactly when \code{center = TRUE}; an explicit value that
+#'   contradicts \code{center} is an error. \code{NULL} means "the intercept
+#'   the model fits".
 #'
 #' @return A named list whose structure depends on \code{family} and
 #'   \code{norm}:
@@ -64,16 +73,17 @@
 #'     basis, optional \code{predictions}, \code{lambda}.}
 #'   \item{binomial, \code{norm = "sv"}}{Same layout as the one-lambda binomial
 #'     CV C++ wrapper (\code{pchal_cv_classi_call} with \code{nfolds = 1}):
-#'     deviances grid, \code{best_lambda}, \code{best_alpha}, optional
-#'     probabilities in \code{predictions}.}
+#'     deviances grid, \code{best_lambda}, \code{res_opt}.}
 #'   \item{binomial, \code{norm = "2"}}{Logistic ridge only: \code{alpha},
-#'     \code{risk}, \code{iter = 0}, optional \code{predictions} / class
-#'     outputs.}
+#'     \code{risk}, \code{iter = 0}, \code{lambda}.}
 #'   \item{binomial, \code{norm = "1"}}{Logistic LASSO (\code{glmnet}):
-#'     \code{alpha}, \code{lambda}, \code{risk}, \code{iter = 0L}, and
-#'     optional \code{predictions} (log-odds), \code{probabilities},
-#'     \code{predicted_classes}.}
+#'     \code{alpha}, \code{intercept}, \code{lambda}, \code{risk},
+#'     \code{iter = 0L}.}
 #' }
+#' For every binomial fit, when \code{predict} is supplied,
+#' \code{predictions} holds the predicted \emph{probabilities} and
+#' \code{log_odds} the linear predictor (\code{\link{cv.hapc}} returns
+#' probabilities in \code{predictions} too).
 #'
 #' @examples
 #' \dontrun{
@@ -98,12 +108,14 @@ hapc <- function(X, Y,
                  crit = c("grad", "risk"),
                  center = TRUE,
                  approx = FALSE,
-                 ini = c("1", "2")) {
+                 ini = c("1", "2"),
+                 intercept = NULL) {
 
   family <- match.arg(family)
   norm   <- match.arg(norm)
   crit   <- match.arg(crit)
   ini    <- match.arg(ini)
+  .hapc_check_intercept(intercept, family, as.logical(center))
 
   # family = "logit-hazard" is a discrete-time hazard model that needs
   # cross-validated regularisation: route users to the CV wrapper.
@@ -147,6 +159,10 @@ hapc <- function(X, Y,
         TRUE,  # with_pgd: logistic ridge + PGD on logistic loss
         PACKAGE = "hapc"
       )
+      # C++ returns probabilities in $predictions; add the linear predictor.
+      if (!is.null(res$predictions)) {
+        res$log_odds <- stats::qlogis(pmin(pmax(res$predictions, 1e-15), 1 - 1e-15))
+      }
       return(res)
     }
     if (norm == "2") {
@@ -158,6 +174,12 @@ hapc <- function(X, Y,
         if (is.null(predict)) NULL else predict, center,
         PACKAGE = "hapc"
       )
+      # C++ returns log-odds in $predictions: same convention as the other
+      # binomial paths (probabilities in $predictions, log-odds in $log_odds).
+      if (!is.null(res$predictions)) {
+        res$log_odds <- as.numeric(res$predictions)
+        res$predictions <- 1 / (1 + exp(-res$log_odds))
+      }
       return(res)
     }
     if (norm == "1") {

@@ -24,6 +24,7 @@ from .core import (
     cross_kernel_hapc,
     design_hapc,
     fast_pchal,
+    kernel_hapc,
     pcghal_classification,
     ridge_regression,
 )
@@ -56,12 +57,12 @@ class SinglePcghalClassificationResult(NamedTuple):
     """Output of :func:`single_pcghal_classification` (binomial)."""
 
     alpha: np.ndarray
-    predictions: Optional[np.ndarray]      # log-odds
-    probabilities: Optional[np.ndarray]    # σ(log-odds)
-    predicted_classes: Optional[np.ndarray]  # in {-1, +1}
+    predictions: Optional[np.ndarray]      # probabilities on ``predict``
+    log_odds: Optional[np.ndarray]         # linear predictor on ``predict``
     lambda_: float
     risk: float
     iter: int
+    intercept: Optional[float] = None      # unpenalised intercept b0
 
 
 # ---------------------------------------------------------------------------
@@ -337,8 +338,8 @@ def single_pcghal_classification(
         Regularisation strength (passed to the ridge initialiser and CV-style
         full-data refit used in the shared C++ layer).
     predict : np.ndarray, optional, shape (m, p)
-        Test features. When given, returns log-odds, probabilities, and
-        thresholded classes in ``{-1,+1}``.
+        Test features. When given, returns probabilities in ``predictions``
+        and the linear predictor in ``log_odds``.
     center : bool, default True
         Centre the HAL design.
     verbose : bool, default False
@@ -353,8 +354,8 @@ def single_pcghal_classification(
     Returns
     -------
     SinglePcghalClassificationResult
-        Fields ``alpha``, ``risk``, ``iter``, and optional ``predictions`` /
-        ``probabilities`` / ``predicted_classes``.
+        Fields ``alpha``, ``risk``, ``iter``, ``intercept`` and, when
+        ``predict`` is given, ``predictions`` (probabilities) and ``log_odds``.
     """
 
     X, Y, n, p = _check_xy(X, Y)
@@ -380,7 +381,7 @@ def single_pcghal_classification(
         .mean()
     )
 
-    predictions = probabilities = predicted_classes = None
+    predictions = log_odds = None
     if predict is not None:
         Xte = _C(predict)
         if Xte.shape[1] != p:
@@ -388,14 +389,11 @@ def single_pcghal_classification(
         Ktest = cross_kernel_hapc(X, Xte, max_degree, center=center)
         v = des.U[:, :final_npc] @ ((1.0 / (des.d[:final_npc] + 1e-12)) * res.alpha)
         log_odds = Ktest @ v + b0
-        predictions = log_odds
-        probabilities = 1.0 / (1.0 + np.exp(-log_odds))
-        predicted_classes = np.where(probabilities > 0.5, 1.0, -1.0)
+        predictions = 1.0 / (1.0 + np.exp(-log_odds))
 
     return SinglePcghalClassificationResult(
-        alpha=res.alpha, predictions=predictions,
-        probabilities=probabilities, predicted_classes=predicted_classes,
-        lambda_=float(lambda_), risk=risk, iter=res.iter,
+        alpha=res.alpha, predictions=predictions, log_odds=log_odds,
+        lambda_=float(lambda_), risk=risk, iter=res.iter, intercept=float(b0),
     )
 
 
@@ -437,7 +435,7 @@ def single_pcghal_classification_ridge_only(
     phat = np.clip(1.0 / (1.0 + np.exp(-(eta + b0))), 1e-15, 1 - 1e-15)
     risk = float((-(y01 * np.log(phat) + (1 - y01) * np.log(1 - phat))).mean())
 
-    predictions = probabilities = predicted_classes = None
+    predictions = log_odds = None
     if predict is not None:
         Xte = _C(predict)
         if Xte.shape[1] != p:
@@ -445,59 +443,222 @@ def single_pcghal_classification_ridge_only(
         Ktest = cross_kernel_hapc(X, Xte, max_degree, center=center)
         v = des.U[:, :final_npc] @ ((1.0 / (des.d[:final_npc] + 1e-12)) * alpha)
         log_odds = Ktest @ v + b0
-        predictions = log_odds
-        probabilities = 1.0 / (1.0 + np.exp(-log_odds))
-        predicted_classes = np.where(probabilities > 0.5, 1.0, -1.0)
+        predictions = 1.0 / (1.0 + np.exp(-log_odds))
 
     return SinglePcghalClassificationResult(
-        alpha=alpha, predictions=predictions,
-        probabilities=probabilities, predicted_classes=predicted_classes,
-        lambda_=float(lambda_), risk=risk, iter=0,
+        alpha=alpha, predictions=predictions, log_odds=log_odds,
+        lambda_=float(lambda_), risk=risk, iter=0, intercept=float(b0),
     )
 
 
 # ---------------------------------------------------------------------------
-# Single λ — binomial, norm="1"  (logistic LASSO via sklearn / liblinear)
+# Single λ — binomial, norm="1"  (logistic LASSO, glmnet's algorithm)
 # ---------------------------------------------------------------------------
+
+def _check_intercept(intercept: Optional[bool], family: str, center: bool) -> None:
+    """Validate ``intercept`` (mirrors R ``.hapc_check_intercept``).
+
+    Every binomial fit has an unpenalised intercept estimated jointly with the
+    PC coefficients; a gaussian fit has an intercept exactly when
+    ``center=True`` (the response is centred). ``None`` means "whatever the
+    model fits"; an explicit value the model cannot honour raises instead of
+    being silently ignored.
+    """
+    if intercept is None:
+        return
+    if not isinstance(intercept, (bool, np.bool_)):
+        raise ValueError("intercept must be None, True or False")
+    if family in ("binomial", "logit-hazard") and not intercept:
+        raise ValueError(
+            f"intercept=False is not supported for family='{family}': the "
+            "intercept is always estimated jointly and left unpenalised "
+            "(fitting with the intercept fixed at 0 centres the logistic fit at "
+            "p = 1/2 instead of the prevalence). Leave 'intercept' unset."
+        )
+    if family == "gaussian" and bool(intercept) != bool(center):
+        raise ValueError(
+            "intercept=True requires center=True for family='gaussian': "
+            "without centring no intercept is fitted."
+            if intercept else
+            "intercept=False is incompatible with center=True for "
+            "family='gaussian': centring fits the intercept (the mean of Y). "
+            "Use center=False for a fit without intercept."
+        )
+
+
+class _LassoBasis(NamedTuple):
+    """PC basis of the HAL design built from the n x n kernel (norm="1")."""
+
+    X: np.ndarray
+    U: np.ndarray          # (n, k) eigenvectors, sign-normalised
+    d: np.ndarray          # (k,) singular values of H
+    keep: np.ndarray       # (k,) bool, numerically non-null directions
+    colmean: np.ndarray    # column means of the uncentred kernel
+    grand: float           # grand mean of the uncentred kernel
+    max_degree: int
+    center: bool
+
+    @property
+    def xtilde(self) -> np.ndarray:
+        return self.U[:, self.keep] * self.d[self.keep]
+
+
+def _lasso_basis(X: np.ndarray, max_degree: int, npcs: int,
+                 center: bool) -> _LassoBasis:
+    """Kernel PC basis, as R ``.hapc_kernel_basis``.
+
+    U and d are the left singular vectors / singular values of the (centred)
+    HAL design H, from the eigendecomposition of K = H H^T, so H is never
+    materialised. Same npcs clamp as :func:`design_hapc` (n - 1 if centred,
+    else n). Eigenvector signs are solver dependent: each column's
+    largest-|.| entry is made positive (sklearn's svd_flip convention), the
+    rule R applies too. Directions with d <= 1e-7 * d[0] are excluded. The
+    uncentred kernel's column means are kept so that predictions can centre
+    ``cross_kernel_hapc(center=False)`` directly instead of recomputing the
+    training kernel.
+    """
+    n = X.shape[0]
+    K = kernel_hapc(X, max_degree, center=False)
+    colmean = K.mean(axis=0)
+    grand = float(colmean.mean())
+    if center:
+        K = K - colmean[:, None] - colmean[None, :] + grand
+    evals, evecs = np.linalg.eigh(K)
+    del K
+    order = np.argsort(evals)[::-1]
+    k = max(1, min(int(npcs), n - 1 if center else n))
+    idx = order[:k]
+    d = np.sqrt(np.clip(evals[idx], 0.0, None))
+    U = np.array(evecs[:, idx], dtype=np.float64)
+    signs = np.sign(U[np.argmax(np.abs(U), axis=0), np.arange(k)])
+    signs[signs == 0] = 1.0
+    U *= signs
+    return _LassoBasis(X=X, U=U, d=d, keep=d > 1e-7 * d[0], colmean=colmean,
+                       grand=grand, max_degree=int(max_degree),
+                       center=bool(center))
+
+
+def _lasso_predictor(basis: _LassoBasis, Xte: np.ndarray) -> np.ndarray:
+    """Map from kept PC coefficients to log-odds at ``Xte`` (minus b0)."""
+    Kt = cross_kernel_hapc(basis.X, Xte, basis.max_degree, center=False)
+    if basis.center:
+        Kt = (Kt - Kt.mean(axis=1, keepdims=True)
+              - basis.colmean[None, :] + basis.grand)
+    return Kt @ (basis.U[:, basis.keep] / basis.d[basis.keep])
+
+
+def _logistic_lasso_cd(Xt: np.ndarray, q: np.ndarray, lam: float,
+                       beta: np.ndarray, b0: float,
+                       tol: float = 1e-10, max_outer: int = 100,
+                       max_sweeps: int = 1000):
+    """L1 logistic regression with unpenalised intercept (glmnet's algorithm).
+
+    Minimises ``(1/n) sum_i CE(q_i, b0 + x_i' beta) + lam * ||beta||_1`` for
+    soft targets ``q`` in [0, 1] by proximal Newton: each outer step builds the
+    IRLS quadratic approximation and solves the weighted LASSO by cyclic
+    coordinate descent (soft-thresholding on beta, plain update on b0).
+    Warm-started from ``(beta, b0)``. Returns ``(beta, b0, n_outer)``.
+    """
+    n, k = Xt.shape
+    beta = beta.astype(np.float64).copy()
+    for outer in range(1, max_outer + 1):
+        eta = b0 + Xt @ beta
+        p = 1.0 / (1.0 + np.exp(-eta))
+        w = np.maximum(p * (1.0 - p), 1e-5)
+        z = eta + (q - p) / w
+        r = z - eta                          # working residual
+        wsum = w.sum()
+        v = (w[:, None] * Xt * Xt).sum(axis=0) / n
+        beta_old, b0_old = beta.copy(), b0
+        for _ in range(max_sweeps):
+            dmax = 0.0
+            db = float((w * r).sum() / wsum)
+            b0 += db
+            r -= db
+            dmax = max(dmax, abs(db))
+            for j in range(k):
+                if v[j] <= 0.0:
+                    continue
+                xj = Xt[:, j]
+                g = float((w * xj) @ r) / n + v[j] * beta[j]
+                new = np.sign(g) * max(abs(g) - lam, 0.0) / v[j]
+                d = new - beta[j]
+                if d != 0.0:
+                    r -= d * xj
+                    beta[j] = new
+                    dmax = max(dmax, abs(d) * np.sqrt(v[j]))
+            if dmax < tol:
+                break
+        change = max(abs(b0 - b0_old),
+                     float(np.max(np.abs(beta - beta_old) * np.sqrt(v))) if k else 0.0)
+        if change < 1e-8:
+            break
+    return beta, b0, outer
+
+
+def _lasso_path(Xt: np.ndarray, q: np.ndarray, lambdas: np.ndarray,
+                max_iter: int = 100):
+    """L1 logistic fits with unpenalised intercept along ``lambdas``.
+
+    Returns ``(B, b0, n_iter)`` with B of shape (ncol(Xt), len(lambdas)),
+    columns in the order of ``lambdas``. Objective (glmnet's):
+    ``(1/n) sum_i CE(q_i, eta_i) + lambda ||alpha||_1``; soft labels q in
+    [0, 1] enter the cross-entropy directly. Fits run from the largest lambda
+    down, each warm-started from the previous one, starting from the
+    intercept-only fit ``b0 = logit(mean(q))``.
+    """
+    lambdas = np.asarray(lambdas, dtype=np.float64)
+    L = lambdas.size
+    B = np.zeros((Xt.shape[1], L))
+    b0s = np.zeros(L)
+    n_iter = np.zeros(L, dtype=int)
+    qbar = float(np.clip(q.mean(), 1e-10, 1 - 1e-10))
+    beta, b0 = np.zeros(Xt.shape[1]), float(np.log(qbar / (1 - qbar)))
+    for j in np.argsort(-lambdas):
+        beta, b0, it = _logistic_lasso_cd(Xt, q, float(lambdas[j]), beta, b0,
+                                          max_outer=int(max_iter))
+        B[:, j], b0s[j], n_iter[j] = beta, b0, it
+    return B, b0s, n_iter
+
 
 def single_pcghal_classification_lasso(
     X: np.ndarray, Y: np.ndarray,
     max_degree: int, npcs: int, lambda_: float,
     predict: Optional[np.ndarray] = None,
     center: bool = True, verbose: bool = False,
-    max_iter: int = 1000,
+    max_iter: int = 100,
 ) -> SinglePcghalClassificationResult:
     """Single-λ binomial HAPC with ``norm="1"`` — logistic LASSO.
 
-    Solves the L1-penalised logistic regression in the PC basis using
-    :class:`sklearn.linear_model.LogisticRegression` with the
-    ``liblinear`` solver. Mirrors R ``hapc(family="binomial", norm="1")``,
-    which uses ``glmnet(..., family="binomial", alpha=1, intercept=FALSE)``
-    on the same ``Xtilde = U * d`` design.
+    Solves the L1-penalised logistic regression in the PC basis with an
+    unpenalised intercept by glmnet's algorithm (IRLS + coordinate descent,
+    :func:`_logistic_lasso_cd`). Mirrors R ``hapc(family="binomial", norm="1")``,
+    which calls ``glmnet(..., family="binomial", alpha=1)`` on the same
+    ``Xtilde = U * d`` design.
 
-    **Lambda parameterisation.** Sklearn's L1 logistic objective with
-    ``liblinear`` is
+    ``U`` and ``d`` come from the eigendecomposition of the n x n HAL kernel
+    (:func:`kernel_hapc`), so the HAL design itself is never materialised.
+
+    **Intercept.** The intercept is estimated jointly and never penalised.
+    Centring makes the PC columns orthogonal to 1, which removes the
+    intercept from least squares but not from logistic regression: fitting
+    with the intercept fixed at 0 (hapc <= 2.6.0) centres the fit at
+    p = 1/2 instead of the prevalence.
+
+    **Lambda parameterisation.** The package convention matches ``glmnet``:
 
     .. code-block:: text
 
-        min_w   ||w||_1  +  C * sum_i log(1 + exp(-y_i x_i^T w))      (1)
+        min_{b0, w}   (1/n) * sum_i CE(y_i, b0 + x_i^T w)  +  lambda * ||w||_1
 
-    while the package convention (matching ``glmnet``'s binomial loss) is
 
-    .. code-block:: text
-
-        min_w   (1/n) * sum_i log(1 + exp(-y_i x_i^T w))  +  lambda * ||w||_1   (2)
-
-    Equating (1) and (2) up to scaling yields  ``C = 1 / (n * lambda)``,
-    which is what we use here so that the same ``lambda`` produces matching
-    coefficients in R (glmnet) and Python (sklearn).
 
     Parameters
     ----------
     X : np.ndarray, shape (n, p)
         Features.
     Y : np.ndarray, shape (n,)
-        Binary labels in ``{0,1}`` or ``{-1,+1}``.
+        Labels in ``{0,1}`` or ``{-1,+1}``, or soft labels in ``[0,1]``.
     max_degree : int
         HAL interaction order.
     npcs : int
@@ -509,27 +670,17 @@ def single_pcghal_classification_lasso(
     center : bool, default True
         Centre the HAL design.
     verbose : bool, default False
-        Reserved for parity with sibling routines (sklearn is silent).
-    max_iter : int, default 1000
-        Maximum iterations for ``liblinear``.
+        Reserved for parity with sibling routines.
+    max_iter : int, default 100
+        Maximum outer (IRLS) iterations.
 
     Returns
     -------
     SinglePcghalClassificationResult
-        ``alpha`` is the LASSO coefficient on the PC basis,
-        ``risk`` is the training logistic loss,
-        ``iter`` is the iteration count returned by ``liblinear``,
-        and ``predictions`` / ``probabilities`` / ``predicted_classes`` are
-        populated when ``predict`` is supplied.
+        ``alpha`` (PC coefficients), ``intercept``, ``risk`` (training
+        cross-entropy), ``iter`` (IRLS iterations) and, when ``predict`` is
+        supplied, ``predictions`` (probabilities) and ``log_odds``.
     """
-    try:
-        from sklearn.linear_model import LogisticRegression
-    except ImportError as e:  # pragma: no cover
-        raise ImportError(
-            "scikit-learn is required for binomial + norm='1' (logistic LASSO). "
-            "Install with: pip install scikit-learn"
-        ) from e
-
     if not (lambda_ > 0):
         raise ValueError(f"lambda_ must be > 0 for LASSO; got {lambda_}")
 
@@ -537,71 +688,28 @@ def single_pcghal_classification_lasso(
     # Accept hard {0,1}/{-1,+1} or soft [0,1] labels (cross-entropy target).
     q = _to_soft01(Y)
 
-    des = design_hapc(X, max_degree, npcs, center=center)
-    final_npc = des.d.shape[0]
-    Xtilde = des.U[:, :final_npc] * des.d[:final_npc]
+    basis = _lasso_basis(X, max_degree, npcs, center)
+    Xt = basis.xtilde
+    B, b0s, n_iter = _lasso_path(Xt, q, np.array([float(lambda_)]), max_iter)
+    alpha_keep, b0 = B[:, 0], float(b0s[0])
+    alpha = np.zeros(basis.d.shape[0])
+    alpha[basis.keep] = alpha_keep
 
-    # For soft labels, replicate each row as a (label=1, weight=q) and
-    # (label=0, weight=1-q) pair so the sample-weighted logistic loss equals
-    # the soft cross-entropy. On hard labels this reduces to the plain fit.
-    is_soft = bool(np.any((q > 1e-12) & (q < 1.0 - 1e-12)))
-    if is_soft:
-        Xfit = _C(np.vstack([Xtilde, Xtilde]))
-        yfit = np.concatenate([np.ones(n), np.zeros(n)]).astype(np.int64)
-        wfit = np.concatenate([q, 1.0 - q]).astype(np.float64)
-    else:
-        Xfit = _C(Xtilde)
-        yfit = (q > 0.5).astype(np.int64)
-        wfit = None
-
-    C = 1.0 / (n * float(lambda_))
-    # sklearn>=1.8 deprecated penalty="l1" in favour of l1_ratio=1 with the
-    # liblinear solver; older versions still need penalty="l1". Try the new
-    # API first and fall back gracefully.
-    import inspect
-    sig_params = inspect.signature(LogisticRegression).parameters
-    common_kw = dict(solver="liblinear", C=C, fit_intercept=False,
-                     max_iter=int(max_iter))
-
-    def _fit(**ctor):
-        m = LogisticRegression(**ctor, **common_kw)
-        if wfit is None:
-            m.fit(Xfit, yfit)
-        else:
-            m.fit(Xfit, yfit, sample_weight=wfit)
-        return m
-
-    if "l1_ratio" in sig_params and "penalty" in sig_params:
-        try:
-            model = _fit(l1_ratio=1.0)
-        except (TypeError, ValueError):
-            model = _fit(penalty="l1")
-    else:  # pragma: no cover  (very old sklearn)
-        model = _fit(penalty="l1")
-    alpha = np.asarray(model.coef_, dtype=np.float64).ravel()
-    b0 = _calibrate_logistic_intercept(q, Xtilde @ alpha)
-
-    eta = Xtilde @ alpha + b0
+    eta = Xt @ alpha_keep + b0
     phat = np.clip(1.0 / (1.0 + np.exp(-eta)), 1e-15, 1 - 1e-15)
     risk = float((-(q * np.log(phat) + (1 - q) * np.log(1 - phat))).mean())
 
-    predictions = probabilities = predicted_classes = None
+    predictions = log_odds = None
     if predict is not None:
         Xte = _C(predict)
         if Xte.shape[1] != p:
             raise ValueError(f"predict must have {p} columns")
-        Ktest = cross_kernel_hapc(X, Xte, max_degree, center=center)
-        v = des.U[:, :final_npc] @ ((1.0 / (des.d[:final_npc] + 1e-12)) * alpha)
-        log_odds = Ktest @ v + b0
-        predictions = log_odds
-        probabilities = 1.0 / (1.0 + np.exp(-log_odds))
-        predicted_classes = np.where(probabilities > 0.5, 1.0, -1.0)
+        log_odds = _lasso_predictor(basis, Xte) @ alpha_keep + b0
+        predictions = 1.0 / (1.0 + np.exp(-log_odds))
 
-    n_iter = int(np.asarray(model.n_iter_).ravel()[0])
     return SinglePcghalClassificationResult(
-        alpha=alpha, predictions=predictions,
-        probabilities=probabilities, predicted_classes=predicted_classes,
-        lambda_=float(lambda_), risk=risk, iter=n_iter,
+        alpha=alpha, predictions=predictions, log_odds=log_odds,
+        lambda_=float(lambda_), risk=risk, iter=int(n_iter[0]), intercept=b0,
     )
 
 
@@ -623,7 +731,8 @@ def hapc(X: np.ndarray, Y: np.ndarray,
          crit: str = "grad",
          center: bool = True,
          approx: bool = False,
-         ini: str = "1"):
+         ini: str = "1",
+         intercept: Optional[bool] = None):
     """Single-λ HAPC fit (Python counterpart of R ``hapc()``).
 
     Parameters
@@ -666,6 +775,12 @@ def hapc(X: np.ndarray, Y: np.ndarray,
     ini : {"1", "2"}, default "1"
         PGD initialiser for ``norm="sv"``: ``"1"`` = LASSO (default, matches R),
         ``"2"`` = ridge.
+    intercept : bool or None, default None
+        Every binomial fit includes an unpenalised intercept estimated jointly
+        with the PC coefficients, so ``intercept=False`` raises for
+        ``family="binomial"``. For ``family="gaussian"`` the intercept is
+        fitted exactly when ``center=True``; an explicit value contradicting
+        ``center`` raises. ``None`` means "the intercept the model fits".
 
     Returns
     -------
@@ -686,6 +801,7 @@ def hapc(X: np.ndarray, Y: np.ndarray,
     >>> fit.alpha.shape  # doctest: +ELLIPSIS
     (...,)
     """
+    _check_intercept(intercept, family, center)
     if family == "logit-hazard":
         raise ValueError(
             "family='logit-hazard' is a cross-validated discrete-time hazard "

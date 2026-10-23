@@ -488,24 +488,17 @@ ate.hapc <- function(X, Y, A,
 # ---------------------------------------------------------------------------
 
 # Extract probabilities from the result of a binomial single-lambda hapc fit.
-# Different norm paths return either probabilities or log-odds in
-# `$predictions`.  This helper normalises to probabilities in [0,1].
+# Every binomial path returns probabilities in `$predictions` (log-odds in
+# `$log_odds`).
 .ate_propensity_probs <- function(res) {
-  if (!is.null(res$probabilities)) {
-    return(as.numeric(res$probabilities))
-  }
   if (is.null(res$predictions)) {
     stop("Propensity fit did not return predictions; cannot compute pi_hat(W).")
   }
   p <- as.numeric(res$predictions)
-  if (any(!is.finite(p))) {
-    stop("Propensity predictions contain non-finite values.")
+  if (any(!is.finite(p)) || any(p < 0 | p > 1)) {
+    stop("Propensity predictions must be probabilities in [0, 1].")
   }
-  if (any(p < 0) || any(p > 1)) {
-    1 / (1 + exp(-p))
-  } else {
-    p
-  }
+  p
 }
 
 # Extract continuous outcome predictions from a gaussian single-lambda hapc

@@ -2,8 +2,7 @@
 // Pure-C++ binomial (logistic) HAPC: shared by both R and Python.
 //
 // This file provides:
-//   - logistic_ridge_init  : Newton-Raphson logistic ridge regression
-//                            (pure C++ counterpart of `logistic_call`).
+//   - logistic_ridge_init  : Newton-Raphson logistic ridge regression.
 //   - pcghal_cv_classi_python : k-fold CV for the classification model
 //                               (pure C++ counterpart of R's
 //                               `pchal_cv_classi_call`).
@@ -22,47 +21,68 @@
 #include <vector>
 
 // ---------------------------------------------------------------------------
-// Newton-Raphson logistic ridge regression (replicates logistic_call.cpp).
-// Y must be encoded in {-1, +1}.  Reuses the same fixed iteration budget
-// and tolerance as the R-only path, including the (idiosyncratic) update
-// rule `beta := delta_beta` (i.e. solving the full normal equation each
-// iteration, treating the IRLS working response as the regression target).
+// Newton-Raphson (IRLS) logistic ridge regression.  Each iteration solves
+// the full penalised normal equations with the IRLS working response as
+// target.
 // ---------------------------------------------------------------------------
 // Soft-label logistic ridge.  The target `y01` may take any value in [0, 1]:
 // hard {0,1} labels or fractional EM-HAL E-step posteriors.  The IRLS update
 // is unchanged; fractional targets are standard for cross-entropy
 // minimisation, so on hard {0,1} inputs the result is bit-identical to the
 // former {-1,+1} implementation.
+//
+// Unpenalised intercept: the IRLS runs on [1, X] with the ridge penalty on
+// the slopes only, so the slopes are those of the joint (intercept, slopes)
+// penalised fit.  Only the slopes are returned; callers recover the
+// intercept with calibrate_logistic_intercept(), which solves the intercept
+// score equation sum(p - y) = 0 that the joint fit already satisfies.  (The
+// centred PC basis has columns orthogonal to 1, but in logistic regression
+// that does not make the intercept separable: fitting the slopes with b0 = 0
+// fits them around p = 1/2 instead of the prevalence.)
+//
+// Scale: the objective is glmnet's (family = "binomial", alpha = 0,
+// standardize = FALSE, unpenalised intercept),
+//     -(1/n) loglik(b0, beta) + (lambda / 2) ||beta||^2,
+// whose Newton/IRLS step is (X'WX + n lambda I) theta = X'Wz on the slopes.
+// (Up to hapc 2.6.0 the right-hand side also carried "- n lambda beta",
+// which converges to a penalty of lambda ||beta||^2, i.e. twice glmnet's.)
 VectorXd logistic_ridge_init_y01(const VectorXd& y01, const MatrixXd& X, double lambda) {
     const int n = X.rows();
     const int p = X.cols();
     if (y01.size() != n) {
         throw std::runtime_error("logistic_ridge_init: Y length must match nrow(X).");
     }
-    // Match logistic_call: lambda is multiplied by n internally.
     const double lam = lambda * n;
     const int max_iter = 100;
     const double tol = 1e-8;
 
-    VectorXd beta = VectorXd::Zero(p);
+    MatrixXd Xa(n, p + 1);
+    Xa.col(0).setOnes();
+    Xa.rightCols(p) = X;
+    VectorXd pen = VectorXd::Constant(p + 1, lam);
+    pen[0] = 0.0;  // intercept not penalised
+
+    // Start the intercept at logit(mean y) so the first IRLS step is centred
+    // at the prevalence.
+    const double ybar = std::min(1.0 - 1e-6, std::max(1e-6, y01.mean()));
+    VectorXd theta = VectorXd::Zero(p + 1);
+    theta[0] = std::log(ybar / (1.0 - ybar));
+
     for (int iter = 0; iter < max_iter; ++iter) {
-        VectorXd eta = X * beta;
+        VectorXd eta = Xa * theta;
         VectorXd mu = (1.0 + (-eta.array()).exp()).inverse();
         VectorXd w = mu.array() * (1.0 - mu.array());
         w = w.array().max(1e-8);
         VectorXd z = eta.array() + (y01.array() - mu.array()) / w.array();
 
-        MatrixXd XtW = X.transpose() * w.asDiagonal();
-        MatrixXd H = XtW * X;
-        H.diagonal().array() += lam;
-        VectorXd grad = XtW * z - lam * beta;
-        VectorXd delta_beta = H.ldlt().solve(grad);
-
-        VectorXd beta_old = beta;
-        beta = delta_beta;  // matches the R logistic_call formula exactly
-        if ((beta - beta_old).norm() < tol) break;
+        MatrixXd XtW = Xa.transpose() * w.asDiagonal();
+        MatrixXd H = XtW * Xa;
+        H.diagonal() += pen;
+        VectorXd theta_old = theta;
+        theta = H.ldlt().solve(XtW * z);
+        if ((theta - theta_old).norm() < tol) break;
     }
-    return beta;
+    return theta.tail(p);
 }
 
 // Backward-compatible wrapper: accepts Y in {-1,+1} and converts to {0,1}.

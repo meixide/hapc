@@ -279,7 +279,7 @@ hazard.hapc <- function(X, T, Delta,
       predict = newXpp, center = center, verbose = verbose,
       max_iter = max_iter, tol = tol, step_factor = step_factor
     )
-    haz_vec <- as.numeric(fit$probabilities)
+    haz_vec <- as.numeric(fit$predictions)   # probabilities (all binomial norms)
     haz_mat <- matrix(haz_vec, nrow = m, ncol = K, byrow = TRUE)
     surv_mat <- t(apply(1 - haz_mat, 1L, cumprod))
     out$predict_hazard   <- haz_mat

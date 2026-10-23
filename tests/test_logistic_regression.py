@@ -55,11 +55,12 @@ class TestSinglePcghalClassification:
         res = single_pcghal_classification(
             X, Y, max_degree=2, npcs=10, lambda_=0.01, predict=Xte,
         )
+        # Binomial convention: probabilities in predictions, linear predictor
+        # in log_odds.
         assert res.predictions.shape == (20,)
-        assert res.probabilities.shape == (20,)
-        assert res.predicted_classes.shape == (20,)
-        assert np.all((res.probabilities >= 0) & (res.probabilities <= 1))
-        assert np.all(np.isin(res.predicted_classes, [-1, 1]))
+        assert res.log_odds.shape == (20,)
+        assert np.all((res.predictions >= 0) & (res.predictions <= 1))
+        assert np.allclose(res.predictions, 1 / (1 + np.exp(-res.log_odds)))
 
     def test_invalid_y(self, binary_01):
         X, Y = binary_01
