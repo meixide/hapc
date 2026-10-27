@@ -1,0 +1,23 @@
+test_discard_roundoff_pcs_in_repeated_binary_design (test_sv_ball.TestSVBall.test_discard_roundoff_pcs_in_repeated_binary_design) ... ok
+test_extreme_offsets_and_one_class (test_sv_ball.TestSVBall.test_extreme_offsets_and_one_class) ... ok
+test_independent_epigraph_gaussian_and_logistic (test_sv_ball.TestSVBall.test_independent_epigraph_gaussian_and_logistic) ... ok
+test_interior_solution_and_known_boundary (test_sv_ball.TestSVBall.test_interior_solution_and_known_boundary) ... ok
+test_invariance_to_initial_direction_same_budget (test_sv_ball.TestSVBall.test_invariance_to_initial_direction_same_budget) ... ok
+test_public_binomial_and_cv_diagnostics (test_sv_ball.TestSVBall.test_public_binomial_and_cv_diagnostics) ... ok
+test_rank_deficient_penalty_does_not_claim_certificate (test_sv_ball.TestSVBall.test_rank_deficient_penalty_does_not_claim_certificate) ... ok
+test_zero_coordinate_is_activated (test_sv_ball.TestSVBall.test_zero_coordinate_is_activated) ... ok
+test_zero_radius_rank_deficient_loss_and_unfinished_status (test_sv_ball.TestSVBall.test_zero_radius_rank_deficient_loss_and_unfinished_status) ... ok
+test_intercept_with_extreme_offsets_and_one_class (test_sv_descent.TestSVDescent.test_intercept_with_extreme_offsets_and_one_class) ... ok
+test_public_single_uses_actual_history_and_predictions (test_sv_descent.TestSVDescent.test_public_single_uses_actual_history_and_predictions) ... ok
+test_random_gaussian_and_logistic_paths (test_sv_descent.TestSVDescent.test_random_gaussian_and_logistic_paths) ... ok
+test_small_nonzero_radius (test_sv_descent.TestSVDescent.test_small_nonzero_radius) ... ok
+test_smooth_face_known_minimum (test_sv_descent.TestSVDescent.test_smooth_face_known_minimum) ... ok
+test_stationarity_is_not_global_optimality (test_sv_descent.TestSVDescent.test_stationarity_is_not_global_optimality) ... ok
+test_validation_and_public_diagnostics (test_sv_descent.TestSVDescent.test_validation_and_public_diagnostics) ... ok
+test_zero_beta_cancellation (test_sv_descent.TestSVDescent.test_zero_beta_cancellation) ... ok
+test_zero_radius_and_no_steps (test_sv_descent.TestSVDescent.test_zero_radius_and_no_steps) ... ok
+
+----------------------------------------------------------------------
+Ran 18 tests in 0.399s
+
+OK

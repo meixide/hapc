@@ -19,21 +19,36 @@ PYBIND11_MODULE(hapc_core, m) {
         .def_readonly("alphaiters", &OptimizerOutput::alphaiters)
         .def_readonly("beta", &OptimizerOutput::beta)
         .def_readonly("risk", &OptimizerOutput::risk)
-        .def_readonly("iter", &OptimizerOutput::iter);
+        .def_readonly("iter", &OptimizerOutput::iter)
+        .def_readonly("status", &OptimizerOutput::status)
+        .def_readonly("sv_radius", &OptimizerOutput::sv_radius)
+        .def_readonly("tangent_norm", &OptimizerOutput::tangent_norm)
+        .def_readonly("constraint", &OptimizerOutput::constraint)
+        .def_readonly("converged", &OptimizerOutput::converged)
+        .def_readonly("optimality_gap", &OptimizerOutput::optimality_gap)
+        .def_readonly("dual_bound", &OptimizerOutput::dual_bound)
+        .def_readonly("dual_residual", &OptimizerOutput::dual_residual)
+        .def_readonly("primal_residual", &OptimizerOutput::primal_residual)
+        .def_readonly("constraint_violation", &OptimizerOutput::constraint_violation);
     
     py::class_<SinglePcghalOutput>(m, "SinglePcghalOutput")
         .def_readonly("alpha", &SinglePcghalOutput::alpha)
         .def_readonly("predictions", &SinglePcghalOutput::predictions)
         .def_readonly("lambda_val", &SinglePcghalOutput::lambda_val)
         .def_readonly("risk", &SinglePcghalOutput::risk)
-        .def_readonly("iter", &SinglePcghalOutput::iter);
+        .def_readonly("iter", &SinglePcghalOutput::iter)
+        .def_readonly("optimizer_output", &SinglePcghalOutput::optimizer_output);
     
     py::class_<CVOutput>(m, "CVOutput")
         .def_readonly("mses", &CVOutput::mses)
         .def_readonly("lambdas", &CVOutput::lambdas)
         .def_readonly("best_lambda", &CVOutput::best_lambda)
         .def_readonly("best_alpha", &CVOutput::best_alpha)
-        .def_readonly("predictions", &CVOutput::predictions);
+        .def_readonly("predictions", &CVOutput::predictions)
+        .def_readonly("optimizer_output", &CVOutput::optimizer_output)
+        .def_readonly("sv_fold_status", &CVOutput::sv_fold_status)
+        .def_readonly("sv_fold_gap", &CVOutput::sv_fold_gap)
+        .def_readonly("sv_fold_radius", &CVOutput::sv_fold_radius);
 
     py::class_<FastCVOutput>(m, "FastCVOutput")
         .def_readonly("mses", &FastCVOutput::mses)
@@ -47,7 +62,11 @@ PYBIND11_MODULE(hapc_core, m) {
         .def_readonly("lambdas", &CVClassiOutput::lambdas)
         .def_readonly("best_lambda", &CVClassiOutput::best_lambda)
         .def_readonly("best_alpha", &CVClassiOutput::best_alpha)
-        .def_readonly("predictions", &CVClassiOutput::predictions);
+        .def_readonly("predictions", &CVClassiOutput::predictions)
+        .def_readonly("optimizer_output", &CVClassiOutput::optimizer_output)
+        .def_readonly("sv_fold_status", &CVClassiOutput::sv_fold_status)
+        .def_readonly("sv_fold_gap", &CVClassiOutput::sv_fold_gap)
+        .def_readonly("sv_fold_radius", &CVClassiOutput::sv_fold_radius);
     
     m.def("pchal_des", &pchal_des,
           py::arg("X"), py::arg("maxdeg"), py::arg("npc"), py::arg("center") = true);
@@ -75,6 +94,14 @@ PYBIND11_MODULE(hapc_core, m) {
     m.def("fast_pchal_call", &fast_pchal_call,
           py::arg("U"), py::arg("D2"), py::arg("Y"), py::arg("lambda"));
     
+    m.def("pcghal_boundary_call", &pcghal_boundary_call,
+          py::arg("Y"),py::arg("Xtilde"),py::arg("ENn"),py::arg("alpha0"),
+          py::arg("max_iter")=5000,py::arg("tol")=0.001,py::arg("step_factor")=0.8,
+          py::arg("verbose")=false,py::arg("crit")="grad");
+    m.def("pcghal_boundary_classi_call", &pcghal_boundary_classi_call,
+          py::arg("Y"),py::arg("Xtilde"),py::arg("ENn"),py::arg("alpha0"),
+          py::arg("max_iter")=5000,py::arg("tol")=0.001,py::arg("step_factor")=0.8,
+          py::arg("verbose")=false);
     m.def("single_pcghal_fit", &single_pcghal_fit,
           py::arg("X"), py::arg("Y"), py::arg("maxdeg"), py::arg("npc"),
           py::arg("single_lambda"), py::arg("predict_data"),

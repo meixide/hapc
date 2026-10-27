@@ -1,0 +1,7 @@
+HAL_gaussian boundary cases 4 statuses {'max_iter': 1, 'line_search_stalled': 3} max_gap inf
+HAL_gaussian ball cases 4 statuses {'optimal': 4} max_gap 8.982895849385386e-07
+gaussian boundary cases 20 statuses {'max_iter': 10, 'line_search_stalled': 10} max_gap inf
+gaussian ball cases 20 statuses {'optimal': 20} max_gap 0.00012780844008375425
+binomial boundary cases 20 statuses {'tangent_stationary': 2, 'max_iter': 12, 'line_search_stalled': 6} max_gap inf
+binomial ball cases 20 statuses {'optimal': 20} max_gap 1.635308621850129e-08
+reference_max_abs_difference 8.671428020079475e-09

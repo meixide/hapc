@@ -22,6 +22,16 @@ struct OptimizerOutput {
     VectorXd beta;
     double risk;
     int iter;
+    std::string status = "not_reported";
+    double sv_radius = 0;
+    double tangent_norm = 0;
+    std::string constraint = "boundary";
+    bool converged = false;
+    double optimality_gap = std::numeric_limits<double>::infinity();
+    double dual_bound = -std::numeric_limits<double>::infinity();
+    double dual_residual = std::numeric_limits<double>::infinity();
+    double primal_residual = 0;
+    double constraint_violation = 0;
 };
 
 DesignOutput pchal_des(const MatrixXd& X, int maxdeg, int npc, bool center);
@@ -41,6 +51,10 @@ OptimizerOutput pcghal_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
                                     const MatrixXd& ENn, const VectorXd& alpha0,
                                     int max_iter, double tol, double step_factor, 
                                     bool verbose);
+OptimizerOutput pcghal_boundary_call(const VectorXd&,const MatrixXd&,const MatrixXd&,const VectorXd&,
+                                      int,double,double,bool,const std::string&);
+OptimizerOutput pcghal_boundary_classi_call(const VectorXd&,const MatrixXd&,const MatrixXd&,const VectorXd&,
+                                           int,double,double,bool);
 VectorXd fast_pchal_call(const MatrixXd& U, const VectorXd& D2, const VectorXd& Y, double lambda);
 
 // Single lambda fit with PC-GHAL optimizer (C++ wrapper for Python)
@@ -50,6 +64,7 @@ struct SinglePcghalOutput {
     double lambda_val;  // renamed from 'lambda' to avoid Python keyword issues
     double risk;
     int iter;
+    OptimizerOutput optimizer_output;
 };
 
 SinglePcghalOutput single_pcghal_fit(const MatrixXd& X, const VectorXd& Y, 
@@ -66,6 +81,10 @@ struct CVOutput {
     double best_lambda;
     VectorXd best_alpha;
     VectorXd predictions;
+    OptimizerOutput optimizer_output;
+    std::vector<std::string> sv_fold_status;
+    std::vector<double> sv_fold_gap;
+    std::vector<double> sv_fold_radius;
 };
 
 // CV with PC-GHAL optimizer (C++ wrapper for Python)
@@ -109,6 +128,10 @@ struct CVClassiOutput {
     double best_lambda;
     VectorXd best_alpha;
     VectorXd predictions;          // predicted probabilities on `predict`
+    OptimizerOutput optimizer_output;
+    std::vector<std::string> sv_fold_status;
+    std::vector<double> sv_fold_gap;
+    std::vector<double> sv_fold_radius;
 };
 
 // Python-friendly binomial CV (mirrors R `pchal_cv_classi_call`).

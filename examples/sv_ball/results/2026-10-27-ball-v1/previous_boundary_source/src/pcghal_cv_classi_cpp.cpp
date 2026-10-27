@@ -1,0 +1,390 @@
+// pcghal_cv_classi_cpp.cpp
+// Pure-C++ binomial (logistic) HAPC: shared by both R and Python.
+//
+// This file provides:
+//   - logistic_ridge_init  : Newton-Raphson logistic ridge regression.
+//   - pcghal_cv_classi_python : k-fold CV for the classification model
+//                               (pure C++ counterpart of R's
+//                               `pchal_cv_classi_call`).
+//
+// Both R (`pchal_cv_classi_call` thin SEXP wrapper) and Python (pybind11
+// binding `pcghal_cv_classi_fit`) call this code so fold partitioning,
+// initialiser, optimisation and risk computation are bit-identical across
+// languages.
+
+#include "hapc_core.hpp"
+#include "logistic_intercept.hpp"
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numeric>
+#include <random>
+#include <vector>
+
+// ---------------------------------------------------------------------------
+// Newton-Raphson (IRLS) logistic ridge regression.  Each iteration solves
+// the full penalised normal equations with the IRLS working response as
+// target.
+// ---------------------------------------------------------------------------
+// Soft-label logistic ridge.  The target `y01` may take any value in [0, 1]:
+// hard {0,1} labels or fractional EM-HAL E-step posteriors.  The IRLS update
+// is unchanged; fractional targets are standard for cross-entropy
+// minimisation, so on hard {0,1} inputs the result is bit-identical to the
+// former {-1,+1} implementation.
+//
+// Unpenalised intercept: the IRLS runs on [1, X] with the ridge penalty on
+// the slopes only, so the slopes are those of the joint (intercept, slopes)
+// penalised fit.  Only the slopes are returned; callers recover the
+// intercept with calibrate_logistic_intercept(), which solves the intercept
+// score equation sum(p - y) = 0 that the joint fit already satisfies.  (The
+// centred PC basis has columns orthogonal to 1, but in logistic regression
+// that does not make the intercept separable: fitting the slopes with b0 = 0
+// fits them around p = 1/2 instead of the prevalence.)
+//
+// Scale: the objective is glmnet's (family = "binomial", alpha = 0,
+// standardize = FALSE, unpenalised intercept),
+//     -(1/n) loglik(b0, beta) + (lambda / 2) ||beta||^2,
+// whose Newton/IRLS step is (X'WX + n lambda I) theta = X'Wz on the slopes.
+// (Up to hapc 2.6.0 the right-hand side also carried "- n lambda beta",
+// which converges to a penalty of lambda ||beta||^2, i.e. twice glmnet's.)
+VectorXd logistic_ridge_init_y01(const VectorXd& y01, const MatrixXd& X, double lambda) {
+    const int n = X.rows();
+    const int p = X.cols();
+    if (y01.size() != n) {
+        throw std::runtime_error("logistic_ridge_init: Y length must match nrow(X).");
+    }
+    const double lam = lambda * n;
+    const int max_iter = 100;
+    const double tol = 1e-8;
+
+    MatrixXd Xa(n, p + 1);
+    Xa.col(0).setOnes();
+    Xa.rightCols(p) = X;
+    VectorXd pen = VectorXd::Constant(p + 1, lam);
+    pen[0] = 0.0;  // intercept not penalised
+
+    // Start the intercept at logit(mean y) so the first IRLS step is centred
+    // at the prevalence.
+    const double ybar = std::min(1.0 - 1e-6, std::max(1e-6, y01.mean()));
+    VectorXd theta = VectorXd::Zero(p + 1);
+    theta[0] = std::log(ybar / (1.0 - ybar));
+
+    for (int iter = 0; iter < max_iter; ++iter) {
+        VectorXd eta = Xa * theta;
+        VectorXd mu = (1.0 + (-eta.array()).exp()).inverse();
+        VectorXd w = mu.array() * (1.0 - mu.array());
+        w = w.array().max(1e-8);
+        VectorXd z = eta.array() + (y01.array() - mu.array()) / w.array();
+
+        MatrixXd XtW = Xa.transpose() * w.asDiagonal();
+        MatrixXd H = XtW * Xa;
+        H.diagonal() += pen;
+        VectorXd theta_old = theta;
+        theta = H.ldlt().solve(XtW * z);
+        if ((theta - theta_old).norm() < tol) break;
+    }
+    return theta.tail(p);
+}
+
+// Backward-compatible wrapper: accepts Y in {-1,+1} and converts to {0,1}.
+// Used by the PGD (norm="sv") single-fit path, which is hard-label only.
+VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double lambda) {
+    const int n = X.rows();
+    VectorXd y01(n);
+    for (int i = 0; i < n; ++i) y01[i] = (Y_pm1[i] > 0) ? 1.0 : 0.0;
+    return logistic_ridge_init_y01(y01, X, lambda);
+}
+
+static double calibrate_logistic_intercept(const VectorXd& Y01,
+                                           const VectorXd& eta) {
+    return profile_logistic_intercept(Y01, eta);
+}
+
+// Soft cross-entropy risk for fractional targets y01 in [0,1], given a linear
+// predictor `eta` (intercept already folded in).  On hard {0,1} labels this
+// equals the former {-1,+1} logistic risk, so behaviour is unchanged on
+// binary inputs.
+static double logistic_risk_y01(const VectorXd& y01, const VectorXd& eta) {
+    const int n = (int)y01.size();
+    if (eta.size() != n) {
+        throw std::runtime_error("logistic_risk_y01: length mismatch");
+    }
+    double risk = 0.0;
+    for (int i = 0; i < n; ++i) {
+        const double pi = 1.0 / (1.0 + std::exp(-eta[i]));
+        const double p = std::min(1.0 - 1e-15, std::max(1e-15, pi));
+        risk += -(y01[i] * std::log(p) + (1.0 - y01[i]) * std::log(1.0 - p));
+    }
+    return risk / n;
+}
+
+// ---------------------------------------------------------------------------
+// Build the Eigen-friendly "Xtilde = U_top * diag(d_top)" representation,
+// returning final_npc (which may be capped by the design rank).
+// ---------------------------------------------------------------------------
+static int compute_classi_design(const MatrixXd& X, int maxdeg, int npc, bool center,
+                                 MatrixXd& Xtilde_out, MatrixXd& E_Nn_out,
+                                 MatrixXd& U_full_out, VectorXd& d_full_out) {
+    DesignOutput des = pchal_des(X, maxdeg, npc, center);
+    const int final_npc = (npc < (int)des.d.size()) ? npc : (int)des.d.size();
+    Xtilde_out = des.U.leftCols(final_npc) * des.d.head(final_npc).asDiagonal();
+    E_Nn_out = des.V.leftCols(final_npc);
+    U_full_out = des.U.leftCols(final_npc);
+    d_full_out = des.d.head(final_npc);
+    return final_npc;
+}
+
+// ---------------------------------------------------------------------------
+// Same fold partition strategy used everywhere in this package:
+//   - block partition with the last fold absorbing the remainder
+//   - shuffled with std::mt19937(12345)
+// ---------------------------------------------------------------------------
+static std::vector<int> make_folds(int n, int K) {
+    std::vector<int> folds(n);
+    const int fold_size = n / K;
+    for (int i = 0; i < n; ++i) folds[i] = (i / fold_size) + 1;
+    for (int i = fold_size * K; i < n; ++i) folds[i] = K;
+    std::mt19937 rng(12345);
+    std::shuffle(folds.begin(), folds.end(), rng);
+    return folds;
+}
+
+// ---------------------------------------------------------------------------
+// Public API: k-fold logistic HAPC CV.
+// ---------------------------------------------------------------------------
+// Helper: per-lambda full-data fit (used by the nfolds<=1 single-λ path and
+// for the post-CV refit). When `with_pgd == false`, returns the logistic-ridge
+// initialiser α directly with its training logistic risk; otherwise runs the
+// PGD step on top of it (norm="sv").
+static OptimizerOutput logistic_full_fit(const VectorXd& Y01,
+                                          const MatrixXd& Xtilde,
+                                          const MatrixXd& E_Nn,
+                                          double lambda,
+                                          int max_iter, double tol,
+                                          double step_factor, bool verbose,
+                                          bool with_pgd) {
+    VectorXd alpha0 = logistic_ridge_init_y01(Y01, Xtilde, lambda);
+    const int n = Xtilde.rows();
+    VectorXd alpha_fit;
+    if (with_pgd) {
+        // PGD (norm="sv") uses the {-1,+1} logistic loss and is reached only
+        // for hard labels (soft labels are rejected upstream), so thresholding
+        // at 0.5 recovers the exact {-1,+1} encoding.
+        VectorXd Y_pm1(n);
+        for (int i = 0; i < n; ++i) Y_pm1[i] = (Y01[i] > 0.5) ? 1.0 : -1.0;
+        OptimizerOutput out = pcghal_classi_call(Y_pm1, Xtilde, E_Nn, alpha0,
+                                                 max_iter, tol, step_factor, verbose);
+        alpha_fit = out.alpha;
+    } else {
+        alpha_fit = alpha0;  // logistic ridge only (norm="2")
+    }
+    VectorXd eta = Xtilde * alpha_fit;
+    const double b0 = calibrate_logistic_intercept(Y01, eta);
+    const double risk = logistic_risk_y01(Y01, eta.array() + b0);
+    OptimizerOutput out;
+    out.alpha = alpha_fit;
+    out.alphaiters = MatrixXd::Zero(0, alpha_fit.size());
+    out.beta = E_Nn * alpha_fit;
+    out.risk = risk;
+    out.iter = 0;
+    return out;
+}
+
+CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
+                                        int maxdeg, int npc,
+                                        const std::vector<double>& lambdas,
+                                        int nfolds, const MatrixXd& predict_data,
+                                        int max_iter, double tol, double step_factor,
+                                        bool verbose, bool center,
+                                        bool with_pgd) {
+    const int n = X.rows();
+    const int p = X.cols();
+    if (Y.size() != n) throw std::runtime_error("pcghal_cv_classi: length(Y) != nrow(X)");
+    // Y must lie in [0,1]: hard {0,1} labels or soft EM-HAL posteriors. Soft
+    // labels (any value strictly inside (0,1)) are supported only for the
+    // logistic-ridge path (norm="2"); the PGD path (norm="sv", with_pgd=true)
+    // is not implemented for soft labels.
+    bool soft = false;
+    for (int i = 0; i < n; ++i) {
+        if (Y[i] < -1e-12 || Y[i] > 1.0 + 1e-12) {
+            throw std::runtime_error("pcghal_cv_classi: Y must be in [0,1]");
+        }
+        if (Y[i] > 1e-12 && Y[i] < 1.0 - 1e-12) soft = true;
+    }
+    if (soft && with_pgd) {
+        throw std::runtime_error(
+            "pcghal_cv_classi: soft labels (Y in (0,1)) are not implemented for "
+            "norm='sv'; use norm='1' or norm='2'.");
+    }
+    const int L = (int)lambdas.size();
+    if (L <= 0) throw std::runtime_error("pcghal_cv_classi: lambdas must be non-empty");
+
+    // Cap npc as in cv_classi.cpp
+    int npc_eff = npc;
+    if (center) {
+        if (npc_eff >= n) npc_eff = n - 1;
+    } else {
+        if (npc_eff > n) npc_eff = n;
+    }
+
+    MatrixXd Xtilde, E_Nn, U_top;
+    VectorXd d_top;
+    const int final_npc = compute_classi_design(X, maxdeg, npc_eff, center,
+                                                 Xtilde, E_Nn, U_top, d_top);
+
+    // Soft target in [0,1] used throughout (the ridge/CE machinery works
+    // directly in this space; the PGD branch builds {-1,+1} locally).
+    const VectorXd& Y01 = Y;
+
+    // Degenerate case: R `hapc(family="binomial", …)` passes nfolds=1 with a
+    // single λ — there is no proper train/test split.  Fit on full data and
+    // report training logistic risk for each λ (when L>1, pick best by risk).
+    if (nfolds <= 1) {
+        std::vector<double> deviances(L, std::numeric_limits<double>::quiet_NaN());
+        VectorXd best_alpha;
+        double best_lambda = lambdas[0];
+        double best_val = std::numeric_limits<double>::infinity();
+        for (int j = 0; j < L; ++j) {
+            const double lam = lambdas[j];
+            OptimizerOutput full_out = logistic_full_fit(
+                Y01, Xtilde, E_Nn, lam, max_iter, tol, step_factor,
+                verbose, with_pgd);
+            deviances[j] = full_out.risk;
+            if (full_out.risk < best_val) {
+                best_val = full_out.risk;
+                best_lambda = lam;
+                best_alpha = full_out.alpha;
+            }
+        }
+        VectorXd predictions = VectorXd::Zero(0);
+        if (predict_data.rows() > 0) {
+            if (predict_data.cols() != p) {
+                throw std::runtime_error("predict must have same #cols as X");
+            }
+            MatrixXd Ktest = kernel_cross_call(X, predict_data, maxdeg, center);
+            VectorXd d_inv = d_top.cwiseInverse();
+            VectorXd v = U_top * (d_inv.asDiagonal() * best_alpha);
+            VectorXd eta_full = Xtilde * best_alpha;
+            VectorXd Y01_full(n);
+            for (int i = 0; i < n; ++i) Y01_full[i] = Y[i];
+            const double b0_full = calibrate_logistic_intercept(Y01_full, eta_full);
+            VectorXd eta_pred = (Ktest * v).array() + b0_full;
+            predictions = (1.0 + (-eta_pred.array()).exp()).inverse();
+        }
+        CVClassiOutput out;
+        out.deviances = deviances;
+        out.lambdas = lambdas;
+        out.best_lambda = best_lambda;
+        out.best_alpha = best_alpha;
+        out.predictions = predictions;
+        return out;
+    }
+
+    std::vector<int> folds = make_folds(n, nfolds);
+
+    // fold_error[k][j] = average deviance of fold k at lambda j
+    MatrixXd fold_error = MatrixXd::Constant(nfolds, L, std::numeric_limits<double>::quiet_NaN());
+
+    for (int j = 0; j < L; ++j) {
+        const double lambda = lambdas[j];
+        for (int k = 1; k <= nfolds; ++k) {
+            std::vector<int> tr_idx, te_idx;
+            tr_idx.reserve(n); te_idx.reserve(n / nfolds + 1);
+            for (int i = 0; i < n; ++i) {
+                if (folds[i] == k) te_idx.push_back(i);
+                else tr_idx.push_back(i);
+            }
+            const int ntr = (int)tr_idx.size();
+            const int nte = (int)te_idx.size();
+            if (ntr == 0 || nte == 0) continue;
+
+            MatrixXd Xtr(ntr, final_npc), Xte(nte, final_npc);
+            VectorXd Ytr01(ntr), Yte01(nte);
+            for (int i = 0; i < ntr; ++i) {
+                Xtr.row(i) = Xtilde.row(tr_idx[i]);
+                Ytr01[i] = Y01[tr_idx[i]];
+            }
+            for (int i = 0; i < nte; ++i) {
+                Xte.row(i) = Xtilde.row(te_idx[i]);
+                Yte01[i] = Y01[te_idx[i]];
+            }
+
+            VectorXd alpha0 = logistic_ridge_init_y01(Ytr01, Xtr, lambda);
+            VectorXd alpha_fold;
+            if (with_pgd) {
+                // Hard-label only path (soft labels rejected upstream).
+                VectorXd Ytr_pm1(ntr);
+                for (int i = 0; i < ntr; ++i) Ytr_pm1[i] = (Ytr01[i] > 0.5) ? 1.0 : -1.0;
+                OptimizerOutput out = pcghal_classi_call(Ytr_pm1, Xtr, E_Nn, alpha0,
+                                                          max_iter, tol, step_factor,
+                                                          verbose);
+                alpha_fold = out.alpha;
+            } else {
+                alpha_fold = alpha0;  // logistic ridge only (norm="2")
+            }
+
+            VectorXd eta_tr = Xtr * alpha_fold;
+            const double b0_fold = calibrate_logistic_intercept(Ytr01, eta_tr);
+            VectorXd eta = (Xte * alpha_fold).array() + b0_fold;
+            VectorXd probs = (1.0 + (-eta.array()).exp()).inverse();
+            double dev = 0.0;
+            for (int i = 0; i < nte; ++i) {
+                double pi = std::max(1e-15, std::min(1.0 - 1e-15, probs[i]));
+                dev += -(Yte01[i] * std::log(pi) + (1.0 - Yte01[i]) * std::log(1.0 - pi));
+            }
+            fold_error(k - 1, j) = dev / nte;
+        }
+    }
+
+    // Aggregate across folds.
+    std::vector<double> deviances(L, std::numeric_limits<double>::quiet_NaN());
+    for (int j = 0; j < L; ++j) {
+        double sum = 0.0; int cnt = 0;
+        for (int k = 0; k < nfolds; ++k) {
+            double v = fold_error(k, j);
+            if (!std::isnan(v)) { sum += v; cnt++; }
+        }
+        if (cnt > 0) deviances[j] = sum / cnt;
+    }
+
+    int best_idx = 0;
+    double best_val = deviances[0];
+    for (int j = 1; j < L; ++j) {
+        if (std::isnan(deviances[j])) continue;
+        if (std::isnan(best_val) || deviances[j] < best_val) {
+            best_val = deviances[j];
+            best_idx = j;
+        }
+    }
+    const double best_lambda = lambdas[best_idx];
+
+    // Refit on full data at best_lambda (logistic ridge ± PGD).
+    OptimizerOutput full_out = logistic_full_fit(
+        Y01, Xtilde, E_Nn, best_lambda,
+        max_iter, tol, step_factor, verbose, with_pgd);
+
+    // Predict on `predict_data` if supplied (else empty vector).
+    VectorXd predictions = VectorXd::Zero(0);
+    if (predict_data.rows() > 0) {
+        if (predict_data.cols() != p) {
+            throw std::runtime_error("predict must have same #cols as X");
+        }
+        MatrixXd Ktest = kernel_cross_call(X, predict_data, maxdeg, center);
+        VectorXd d_inv = d_top.cwiseInverse();
+        VectorXd v = U_top * (d_inv.asDiagonal() * full_out.alpha);
+        VectorXd eta_full = Xtilde * full_out.alpha;
+        VectorXd Y01_full(n);
+        for (int i = 0; i < n; ++i) Y01_full[i] = Y[i];
+        const double b0_full = calibrate_logistic_intercept(Y01_full, eta_full);
+        VectorXd eta_pred = (Ktest * v).array() + b0_full;
+        predictions = (1.0 + (-eta_pred.array()).exp()).inverse();
+    }
+
+    CVClassiOutput out;
+    out.deviances = deviances;
+    out.lambdas = lambdas;
+    out.best_lambda = best_lambda;
+    out.best_alpha = full_out.alpha;
+    out.predictions = predictions;
+    return out;
+}

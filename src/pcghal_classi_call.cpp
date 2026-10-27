@@ -1,201 +1,43 @@
-// pcghal_classi_call.cpp
-// Classification version with logistic loss
+#include "sv_ball.hpp"
 
-#include "hapc_core.hpp"
-#include <cmath>
-#include <algorithm>
-#include <iostream>
-#include <vector>
+#include "logistic_intercept.hpp"
 
-static inline double sign_double(double x) {
-    return (x > 0) ? 1.0 : ((x < 0) ? -1.0 : 0.0);
+OptimizerOutput pcghal_boundary_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
+                                  const MatrixXd& ENn, const VectorXd& alpha0,
+                                  int max_iter, double tol, double step_factor,
+                                  bool verbose) {
+    validate_sv_data(Y, Xtilde, ENn, alpha0);
+    if (!((Y.array()==1.0) || (Y.array()==-1.0)).all())
+        throw std::runtime_error("Logistic SV solver requires labels -1 or +1");
+    const VectorXd y01=(Y.array()+1.0)/2.0;
+    auto profile = [&](const VectorXd& alpha) -> VectorXd {
+        VectorXd offset=Xtilde*alpha;
+        offset.array() += profile_logistic_intercept(y01, offset);
+        return offset;
+    };
+    auto risk = [&](const VectorXd& alpha) {
+        const VectorXd eta=profile(alpha);
+        double sum=0;
+        for (int i=0; i<Y.size(); ++i) {
+            const double z=-Y[i]*eta[i];
+            sum += std::max(0.0,z)+std::log1p(std::exp(-std::abs(z)));
+        }
+        return sum/Y.size();
+    };
+    auto negative_gradient = [&](const VectorXd& alpha) -> VectorXd {
+        const VectorXd eta=profile(alpha);
+        VectorXd residual(Y.size());
+        for (int i=0; i<Y.size(); ++i) residual[i]=Y[i]*hapc_expit(-Y[i]*eta[i]);
+        return Xtilde.transpose()*residual/Y.size();
+    };
+    return sv_descent(ENn, alpha0, max_iter, tol, step_factor, verbose, "grad",
+                      risk, negative_gradient);
 }
 
-OptimizerOutput pcghal_classi_call(const VectorXd& Y, const MatrixXd& Xtilde,
-                                    const MatrixXd& ENn, const VectorXd& alpha0,
-                                    int max_iter, double tol, double step_factor, 
-                                    bool verbose) {
-    const int n = Xtilde.rows();
-    const int k = Xtilde.cols();
-    const int q = ENn.rows();
-    
-    if (k <= 0 || n <= 0 || q <= 0) throw std::runtime_error("Invalid dimensions");
-    
-    const double eps = 1e-12;
-    
-    VectorXd alpha = alpha0;
-    VectorXd mu(n), g(k), beta(q), a(k), g_tan(k);
-    VectorXd sgn(q), Vt_s(k), gt_alpha(k), numer(q);
-
-    // Unpenalised intercept, profiled out: for each alpha the risk and its
-    // gradient are evaluated at b*(alpha) = argmin_b risk(Xtilde alpha + b),
-    // found by Newton (warm-started from the previous b*).  By the envelope
-    // theorem the gradient of the profiled risk is the partial gradient at
-    // b*, so the PGD below is the joint (alpha, b) optimisation with the
-    // constraint acting on alpha only.  Callers recover b* afterwards with
-    // calibrate_logistic_intercept() on Xtilde * alpha.
-    VectorXd y01 = (Y.array() + 1.0) / 2.0;
-    double b0 = 0.0;
-    {
-        const double ybar = std::min(1.0 - 1e-6, std::max(1e-6, y01.mean()));
-        b0 = std::log(ybar / (1.0 - ybar));
-    }
-    auto add_intercept = [&](VectorXd& m) {
-        for (int it = 0; it < 50; ++it) {
-            double gsum = 0.0, hsum = 0.0;
-            for (int i = 0; i < n; ++i) {
-                const double p = 1.0 / (1.0 + std::exp(-(m[i] + b0)));
-                gsum += p - y01[i];
-                hsum += p * (1.0 - p);
-            }
-            if (std::abs(gsum) < 1e-10 || hsum < 1e-12) break;
-            b0 -= gsum / hsum;
-        }
-        m.array() += b0;
-    };
-
-    auto risk = [&](const VectorXd& alph)->double {
-        mu.noalias() = Xtilde * alph;
-        add_intercept(mu);
-        double sum = 0.0;
-        for (int i = 0; i < n; ++i) {
-            double ymu = Y[i] * mu[i];
-            if (ymu > 0) {
-                sum += std::log1p(std::exp(-ymu));
-            } else {
-                sum += -ymu + std::log1p(std::exp(ymu));
-            }
-        }
-        return sum / n;
-    };
-    
-    auto grad = [&](const VectorXd& alph)->VectorXd {
-        mu.noalias() = Xtilde * alph;
-        add_intercept(mu);
-        VectorXd gtmp(k);
-        
-        for (int j = 0; j < k; ++j) {
-            double sum = 0.0;
-            for (int i = 0; i < n; ++i) {
-                double ymu = Y[i] * mu[i];
-                sum += Y[i] * Xtilde(i, j) / (1.0 + std::exp(ymu));
-            }
-            gtmp[j] = alph[j] * sum / n;
-        }
-        return gtmp;
-    };
-    
-    MatrixXd alphaiters(max_iter + 1, k);
-    alphaiters.row(0) = alpha.transpose();
-    
-    double R_old = risk(alpha);
-    if (!std::isfinite(R_old)) throw std::runtime_error("Non-finite initial risk");
-    
-    if (verbose) {
-        std::cout << "Classification mode (logistic loss)\n";
-        std::cout << "Init | Risk = " << R_old << "  L1(beta) = " 
-                  << (ENn * alpha).cwiseAbs().sum() << std::endl;
-    }
-    
-    int iter_done = 0;
-    // Track last 100 iterations: store (alpha, g_tan_norm) pairs
-    const int lookback_window = 100;
-    std::vector<std::pair<VectorXd, double>> recent_iterations;
-    recent_iterations.reserve(lookback_window);
-    
-    for (int iter = 1; iter <= max_iter; ++iter) {
-        g = grad(alpha);
-        if (!g.allFinite()) throw std::runtime_error("Non-finite gradient");
-        
-        beta.noalias() = ENn * alpha;
-        
-        for (int i = 0; i < q; ++i) sgn[i] = sign_double(beta[i]);
-        Vt_s.noalias() = ENn.transpose() * sgn;
-        a = alpha.array() * Vt_s.array();
-        
-        double denom = a.squaredNorm();
-        VectorXd proj(k);
-        if (denom > eps) {
-            proj = (g.dot(a) / denom) * a;
-        } else {
-            proj.setZero();
-        }
-        g_tan = g - proj;
-        
-        double g_tan_norm = g_tan.norm();
-        
-        gt_alpha = g_tan.array() * alpha.array();
-        numer.noalias() = ENn * gt_alpha;
-        
-        // Step size selection rule: δ < 1 / max_j |h*(j)|
-        // where h*(j) = Σ_m h(m)α(m)E(j,m) / β(α)(j) = numer[j] / beta[j]
-        double max_abs_hstar = 0.0;
-        for (int i = 0; i < q; ++i) {
-            if (std::abs(beta[i]) > eps) {
-                // Compute h*(j) = numer[j] / beta[j]
-                double hstar_j = numer[i] / beta[i];
-                double abs_hstar_j = std::abs(hstar_j);
-                if (abs_hstar_j > max_abs_hstar) {
-                    max_abs_hstar = abs_hstar_j;
-                }
-            }
-        }
-        
-        // Step size: δ = step_factor * (1 / max_j |h*(j)|)
-        // This ensures δ < 1 / max_j |h*(j)| when step_factor < 1
-        double step = 0.0;
-        if (max_abs_hstar > eps) {
-            step = step_factor / max_abs_hstar;
-        }
-        if (!std::isfinite(step) || std::abs(step) > 1e6) step = 0.0;
-        
-        VectorXd alpha_new = alpha.array() * (1.0 + step * g_tan.array());
-        double R_new = risk(alpha_new);
-        
-        if (verbose) {
-            std::cout << "Iter " << iter << " | step=" << step << "  Risk=" << R_new 
-                      << "  ||g_tan||=" << g_tan_norm << std::endl;
-        }
-        
-        // Store this iteration in the lookback window (keep only last 100)
-        if (recent_iterations.size() >= lookback_window) {
-            recent_iterations.erase(recent_iterations.begin());
-        }
-        recent_iterations.push_back(std::make_pair(alpha_new, g_tan_norm));
-        
-        alphaiters.row(iter) = alpha_new.transpose();
-        iter_done = iter;
-        
-        if (!std::isfinite(R_new) || g_tan_norm < tol) {
-            alpha = alpha_new;
-            R_old = R_new;
-            break;
-        }
-        
-        alpha = alpha_new;
-        R_old = R_new;
-    }
-    
-    // Select best solution from last 100 iterations (lowest ||g_tan||)
-    if (!recent_iterations.empty()) {
-        auto best_iter = std::min_element(recent_iterations.begin(), recent_iterations.end(),
-            [](const std::pair<VectorXd, double>& a, const std::pair<VectorXd, double>& b) {
-                return a.second < b.second;
-            });
-        alpha = best_iter->first;
-        R_old = risk(alpha);
-        if (verbose) {
-            std::cout << "\n[Best solution] Selected from last " << recent_iterations.size() 
-                      << " iterations: ||g_tan||=" << best_iter->second << std::endl;
-        }
-    }
-    
-    VectorXd beta_final = ENn * alpha;
-    return OptimizerOutput{
-        alpha,
-        alphaiters.topRows(iter_done + 1),
-        beta_final,
-        R_old,
-        iter_done
-    };
+OptimizerOutput pcghal_classi_call(const VectorXd& Y,const MatrixXd& Z,const MatrixXd& V,
+                                  const VectorXd& initial,int max_iter,double tol,
+                                  double step_factor,bool verbose) {
+    if (!((Y.array()==1.0) || (Y.array()==-1.0)).all())
+        throw std::runtime_error("Logistic SV solver requires labels -1 or +1");
+    return sv_ball_fit(Y,Z,V,initial,max_iter,tol,step_factor,verbose,"grad",true);
 }

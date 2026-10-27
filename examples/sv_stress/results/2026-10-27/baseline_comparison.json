@@ -1,0 +1,722 @@
+[
+  {
+    "family": "gaussian",
+    "seed": 0,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.026296064098589644,
+    "max_risk_increase": 0.0,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 0,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 1,
+    "version": "baseline",
+    "max_relative_sv_drift": 1.1697631350122126,
+    "max_risk_increase": 116.583595559272,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 1,
+    "version": "revised",
+    "max_relative_sv_drift": 3.3306690738754696e-16,
+    "max_risk_increase": 0.0,
+    "status": "line_search_stalled",
+    "iterations": 89
+  },
+  {
+    "family": "gaussian",
+    "seed": 2,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.9544029084325523,
+    "max_risk_increase": 0.41677540613818564,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 2,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 1.8189894035458565e-12,
+    "status": "line_search_stalled",
+    "iterations": 114
+  },
+  {
+    "family": "gaussian",
+    "seed": 3,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.4447717224903527,
+    "max_risk_increase": 22.699541917399984,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 3,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 4,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.6315450602168708,
+    "max_risk_increase": 0.0,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 4,
+    "version": "revised",
+    "max_relative_sv_drift": 6.661338147750939e-16,
+    "max_risk_increase": 0.0,
+    "status": "line_search_stalled",
+    "iterations": 246
+  },
+  {
+    "family": "gaussian",
+    "seed": 5,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.43856018235189254,
+    "max_risk_increase": 21.948480492384988,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 5,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 6,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.2666492445842443,
+    "max_risk_increase": 246.09926222414833,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 6,
+    "version": "revised",
+    "max_relative_sv_drift": 3.3306690738754696e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 7,
+    "version": "baseline",
+    "max_relative_sv_drift": 1.1391983317568832,
+    "max_risk_increase": 51.731719102196166,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 7,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "line_search_stalled",
+    "iterations": 192
+  },
+  {
+    "family": "gaussian",
+    "seed": 8,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.18766886712889597,
+    "max_risk_increase": 220.53218349518102,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 8,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 9,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.7749761174702232,
+    "max_risk_increase": 0.0,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 9,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 10,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.1949233461124118,
+    "max_risk_increase": 1425.8386427587902,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 10,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "line_search_stalled",
+    "iterations": 137
+  },
+  {
+    "family": "gaussian",
+    "seed": 11,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.48559793424801634,
+    "max_risk_increase": 29.25294815146117,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 11,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 12,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.7853810538977959,
+    "max_risk_increase": 19.381662068637524,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 12,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 13,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.04200497290741101,
+    "max_risk_increase": 2896439.3258946985,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 13,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 14,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.3463038800047078,
+    "max_risk_increase": 2.6409451911185897,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 14,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 15,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.07348419439695308,
+    "max_risk_increase": 76.3897072650725,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 15,
+    "version": "revised",
+    "max_relative_sv_drift": 6.661338147750939e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 16,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.7344292446212686,
+    "max_risk_increase": 0.23665968972272822,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 16,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 17,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.1655400714693358,
+    "max_risk_increase": 66.9637867778747,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 17,
+    "version": "revised",
+    "max_relative_sv_drift": 6.661338147750939e-16,
+    "max_risk_increase": 0.0,
+    "status": "line_search_stalled",
+    "iterations": 199
+  },
+  {
+    "family": "gaussian",
+    "seed": 18,
+    "version": "baseline",
+    "max_relative_sv_drift": 1.5246860967642841,
+    "max_risk_increase": 26.946995838959992,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 18,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "line_search_stalled",
+    "iterations": 115
+  },
+  {
+    "family": "gaussian",
+    "seed": 19,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.401935324654237,
+    "max_risk_increase": 0.015288386986867408,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "gaussian",
+    "seed": 19,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": 0.0,
+    "status": "line_search_stalled",
+    "iterations": 95
+  },
+  {
+    "family": "binomial",
+    "seed": 0,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.7266860546274012,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 0,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 1,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.38824805036440857,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 1,
+    "version": "revised",
+    "max_relative_sv_drift": 3.3306690738754696e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 2,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.1966152969974706,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 2,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 3,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.17694850298923348,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 3,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "line_search_stalled",
+    "iterations": 130
+  },
+  {
+    "family": "binomial",
+    "seed": 4,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.2832741144822599,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 4,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "line_search_stalled",
+    "iterations": 167
+  },
+  {
+    "family": "binomial",
+    "seed": 5,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.08020774518434282,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 5,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 6,
+    "version": "baseline",
+    "max_relative_sv_drift": 1.6024480470026905,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 6,
+    "version": "revised",
+    "max_relative_sv_drift": 3.3306690738754696e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 7,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.48028535803167416,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 7,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 8,
+    "version": "baseline",
+    "max_relative_sv_drift": 1.5079153716730689,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 8,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 9,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.29265846615649793,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 9,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 10,
+    "version": "baseline",
+    "max_relative_sv_drift": 2.0579204795959063,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 10,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "line_search_stalled",
+    "iterations": 148
+  },
+  {
+    "family": "binomial",
+    "seed": 11,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.1629996333002961,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 11,
+    "version": "revised",
+    "max_relative_sv_drift": 2.220446049250313e-16,
+    "max_risk_increase": null,
+    "status": "line_search_stalled",
+    "iterations": 123
+  },
+  {
+    "family": "binomial",
+    "seed": 12,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.13746055099923127,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 12,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 13,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.3254450078429709,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 13,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 14,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.10032005845004255,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 14,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 15,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.038176377878353485,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 15,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 16,
+    "version": "baseline",
+    "max_relative_sv_drift": 1.7795283701122755,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 16,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 17,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.35393179820116183,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 17,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "line_search_stalled",
+    "iterations": 182
+  },
+  {
+    "family": "binomial",
+    "seed": 18,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.14568223086146692,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 18,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 19,
+    "version": "baseline",
+    "max_relative_sv_drift": 0.5673752245048937,
+    "max_risk_increase": null,
+    "status": "baseline",
+    "iterations": 250
+  },
+  {
+    "family": "binomial",
+    "seed": 19,
+    "version": "revised",
+    "max_relative_sv_drift": 4.440892098500626e-16,
+    "max_risk_increase": null,
+    "status": "max_iter",
+    "iterations": 250
+  }
+]

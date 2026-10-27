@@ -1,0 +1,14 @@
+test_intercept_with_extreme_offsets_and_one_class (__main__.TestSVDescent.test_intercept_with_extreme_offsets_and_one_class) ... ok
+test_public_single_uses_actual_history_and_predictions (__main__.TestSVDescent.test_public_single_uses_actual_history_and_predictions) ... ok
+test_random_gaussian_and_logistic_paths (__main__.TestSVDescent.test_random_gaussian_and_logistic_paths) ... ok
+test_small_nonzero_radius (__main__.TestSVDescent.test_small_nonzero_radius) ... ok
+test_smooth_face_known_minimum (__main__.TestSVDescent.test_smooth_face_known_minimum) ... ok
+test_stationarity_is_not_global_optimality (__main__.TestSVDescent.test_stationarity_is_not_global_optimality) ... ok
+test_validation_and_public_diagnostics (__main__.TestSVDescent.test_validation_and_public_diagnostics) ... ok
+test_zero_beta_cancellation (__main__.TestSVDescent.test_zero_beta_cancellation) ... ok
+test_zero_radius_and_no_steps (__main__.TestSVDescent.test_zero_radius_and_no_steps) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.253s
+
+OK

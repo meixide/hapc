@@ -106,6 +106,9 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
 
   MatrixXd fold_error = MatrixXd::Constant(K, L, std::numeric_limits<double>::quiet_NaN());
 
+  SEXP sv_states=PROTECT(Rf_allocMatrix(STRSXP,K,L));prot++;
+  SEXP sv_gaps=PROTECT(Rf_allocMatrix(REALSXP,K,L));prot++;
+  SEXP sv_radii=PROTECT(Rf_allocMatrix(REALSXP,K,L));prot++;
   // 5. CV Loop
   for (int j = 0; j < L; ++j) {
     const double lambda = lambdas[j];
@@ -183,6 +186,9 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
       SEXP out = PROTECT(pcghal_call(Y_in, X_in, ENn_in, alpha0_,
                                      max_iter_, tol_, step_factor_, verbose_, crit_)); nprot++;
 
+      SET_STRING_ELT(sv_states,j*K+i-1,STRING_ELT(Rf_getAttrib(out,Rf_install("sv_status")),0));
+      REAL(sv_gaps)[j*K+i-1]=Rf_asReal(Rf_getAttrib(out,Rf_install("sv_optimality_gap")));
+      REAL(sv_radii)[j*K+i-1]=Rf_asReal(Rf_getAttrib(out,Rf_install("sv_radius")));
       // Prediction
       SEXP alpha_out = VECTOR_ELT(out, 0);
       Map<VectorXd> alpha_hat(REAL(alpha_out), Rf_length(alpha_out));
@@ -316,6 +322,9 @@ extern "C" SEXP pchal_cv_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
   SET_STRING_ELT(names, 3, Rf_mkChar("res_opt"));
   if (n_out == 5) SET_STRING_ELT(names, 4, Rf_mkChar("predictions"));
   Rf_setAttrib(out_final, R_NamesSymbol, names);
+  Rf_setAttrib(out_final,Rf_install("sv_fold_status"),sv_states);
+  Rf_setAttrib(out_final,Rf_install("sv_fold_gap"),sv_gaps);
+  Rf_setAttrib(out_final,Rf_install("sv_fold_radius"),sv_radii);
 
   UNPROTECT(prot);
   return out_final;

@@ -341,3 +341,16 @@ pytest
 ## License
 
 MIT License - see LICENSE file
+
+## R: point-treatment ATE with TMLE
+
+`hapc.ate.tmle(W, Y, A)` fits the initial outcome and propensity models with
+HAPC and targets their cross-fitted predictions. It returns the substitution
+ATE, EIF standard error, Wald interval and convergence/clipping diagnostics.
+Binary and continuous complete-data outcomes are supported; no SuperLearner
+dependency. See [implementation and first simulations](examples/ate_tmle/README.md).
+
+```r
+fit <- hapc.ate.tmle(W, Y, A, norm = "1", cf_folds = 5)
+c(estimate = fit$estimate, lower = fit$lower, upper = fit$upper)
+```

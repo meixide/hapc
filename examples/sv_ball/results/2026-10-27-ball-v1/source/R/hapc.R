@@ -1,0 +1,241 @@
+#' Single-lambda HAPC fit
+#'
+#' Fits the Highly Adaptive Principal Components (HAPC) model at a single
+#' regularisation parameter \code{lambda}, using one of three norm
+#' constraints: sectional variation (\code{"sv"}), L1 (\code{"1"}) or L2
+#' (\code{"2"}).  Supports \code{family = "gaussian"} and
+#' \code{family = "binomial"}.
+#'
+#' This is the R counterpart of the Python function \code{hapc.hapc()}.  All
+#' argument names, defaults, and behaviour are identical between R and Python
+#' (the only language-level difference is that Python uses \code{lambda_}
+#' since \code{lambda} is a reserved keyword there).
+#'
+#' @param X Numeric matrix of features (rows = observations, cols = features).
+#' @param Y Numeric response vector of length \code{nrow(X)}. For
+#'   \code{family = "binomial"}: hard labels in \code{{0,1}} or \code{{-1,+1}},
+#'   or \emph{soft} labels in \code{[0,1]} (e.g. EM-HAL E-step posteriors).
+#'   Soft labels are supported only for \code{norm = "1"} or \code{"2"}
+#'   (cross-entropy target); \code{norm = "sv"} requires hard labels.
+#' @param family Character: \code{"gaussian"} (squared error, default) or
+#'   \code{"binomial"} (logistic loss).
+#' @param max_degree Integer; maximum interaction order for the HAL basis.
+#'   Default \code{1L} (additive HAL).
+#' @param npcs Integer; number of principal components to keep. Default
+#'   \code{nrow(X)}.
+#' @param lambda Numeric scalar; regularisation parameter. Default
+#'   \code{0.01}.
+#' @param norm Character: \code{"sv"}, \code{"1"} or \code{"2"}. Default
+#'   \code{"sv"}. For \code{family = "binomial"} all three are supported and
+#'   the loss is always logistic: \code{"sv"} = convex optimisation on logistic loss with
+#'   a sectional-variation ball, \code{"2"} = logistic ridge (Newton-
+#'   Raphson IRLS, no PGD), \code{"1"} = logistic LASSO via
+#'   \code{glmnet::glmnet(..., family = "binomial", alpha = 1)} with an
+#'   unpenalised intercept on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
+#'   (requires the \code{glmnet} package; see \code{intercept}). U and d
+#'   come from the eigendecomposition of the n x n HAL kernel, so the HAL
+#'   design itself is never materialised.
+#' @param predict Optional numeric matrix of new observations (same number of
+#'   columns as \code{X}). If supplied, predictions are returned in the result.
+#' @param max_iter Integer; maximum SV optimisation iterations (only used
+#'   when \code{norm = "sv"}). Default \code{5000L}.
+#' @param tol Numeric; relative primal-dual gap tolerance (only used when
+#'   \code{norm = "sv"}). Stops when the gap is at most
+#'   \code{tol * (1 + abs(risk))}. Default \code{1e-3}.
+#' @param step_factor Legacy boundary-solver control; retained for call
+#'   compatibility, validated in \code{(0,1)}, ignored by the SV-ball solver.
+#' @param verbose Logical; print progress (only used when \code{norm = "sv"}).
+#'   Default \code{FALSE}.
+#' @param crit Legacy boundary-solver criterion, \code{"grad"} or \code{"risk"}.
+#'   Both now use the primal-dual gap for \code{norm = "sv"}.
+#' @param center Logical; whether to centre the kernel matrix and response.
+#'   Default \code{TRUE}.
+#' @param approx Logical; if \code{TRUE} use approximate eigendecomposition
+#'   (power iteration) for \code{norm \%in\% c("1","2")}. Ignored for
+#'   \code{norm = "sv"}. Default \code{FALSE}.
+#' @param ini Character; initialiser determining the SV-ball radius when
+#'   \code{norm = "sv"}: \code{"1"} = LASSO via \code{fast_pchal_call}
+#'   (default, matches Python), \code{"2"} = ridge via \code{ridge_call}.
+#' @param intercept \code{NULL} (default), \code{TRUE} or \code{FALSE}.
+#'   Every binomial fit includes an unpenalised intercept estimated jointly
+#'   with the PC coefficients, so \code{intercept = FALSE} is an error for
+#'   \code{family = "binomial"}. For \code{family = "gaussian"} the intercept
+#'   is fitted exactly when \code{center = TRUE}; an explicit value that
+#'   contradicts \code{center} is an error. \code{NULL} means "the intercept
+#'   the model fits".
+#'
+#' @return A named list whose structure depends on \code{family} and
+#'   \code{norm}:
+#' \describe{
+#'   \item{gaussian, \code{norm = "sv"}}{Optimiser output (e.g.\ \code{res_opt}
+#'     with \code{alpha}, risk, iterations) plus optional \code{predictions}.}
+#'   \item{gaussian, \code{norm \%in\% c("1","2")}}{\code{alpha} on the PC
+#'     basis, optional \code{predictions}, \code{lambda}.}
+#'   \item{binomial, \code{norm = "sv"}}{Same layout as the one-lambda binomial
+#'     CV C++ wrapper (\code{pchal_cv_classi_call} with \code{nfolds = 1}):
+#'     deviances grid, \code{best_lambda}, \code{res_opt}.}
+#'   \item{binomial, \code{norm = "2"}}{Logistic ridge only: \code{alpha},
+#'     \code{risk}, \code{iter = 0}, \code{lambda}.}
+#'   \item{binomial, \code{norm = "1"}}{Logistic LASSO (\code{glmnet}):
+#'     \code{alpha}, \code{intercept}, \code{lambda}, \code{risk},
+#'     \code{iter = 0L}.}
+#' }
+#' For every binomial fit, when \code{predict} is supplied,
+#' \code{predictions} holds the predicted \emph{probabilities} and
+#' \code{log_odds} the linear predictor (\code{\link{cv.hapc}} returns
+#' probabilities in \code{predictions} too).
+#'
+#' @details
+#' For \code{norm = "sv"}, the solver minimises empirical risk over
+#' \eqn{\|V\alpha\|_1 \le C}, where \eqn{C=\|V\alpha_0\|_1}
+#' is set by the initial fit at \code{lambda}. The intercept is unpenalised
+#' and excluded from C. An interior optimum is allowed. The retained PC count
+#' is capped at the numerical rank of the HAL design.
+#'
+#' SV outputs have attributes \code{sv_status}, \code{sv_converged},
+#' \code{sv_radius}, \code{sv_risk}, \code{sv_iterations},
+#' \code{sv_optimality_gap}, \code{sv_dual_bound}, and residual diagnostics.
+#' A feasible fit returned at the iteration limit is not certified optimal.
+#' The \code{alphaiters} history, when present, contains feasible incumbents
+#' ranked by risk (ties at rounding precision use the dual gap).
+#'
+#' @examples
+#' \dontrun{
+#' n <- 100; d <- 3
+#' X <- matrix(runif(n * d, 0, 1), ncol = d)
+#' Y <- sin(pi * X[, 1]) + X[, 2] + rnorm(n, sd = 0.1)
+#' fit <- hapc(X, Y, max_degree = 2, npcs = n - 1, lambda = 0.05, norm = "sv")
+#' }
+#'
+#' @export
+hapc <- function(X, Y,
+                 family = c("gaussian", "binomial", "logit-hazard"),
+                 max_degree = 1L,
+                 npcs = nrow(X),
+                 lambda = 0.01,
+                 norm = c("sv", "1", "2"),
+                 predict = NULL,
+                 max_iter = 5000L,
+                 tol = 1e-3,
+                 step_factor = 0.8,
+                 verbose = FALSE,
+                 crit = c("grad", "risk"),
+                 center = TRUE,
+                 approx = FALSE,
+                 ini = c("1", "2"),
+                 intercept = NULL) {
+
+  family <- match.arg(family)
+  norm   <- match.arg(norm)
+  crit   <- match.arg(crit)
+  ini    <- match.arg(ini)
+  .hapc_check_intercept(intercept, family, as.logical(center))
+
+  # family = "logit-hazard" is a discrete-time hazard model that needs
+  # cross-validated regularisation: route users to the CV wrapper.
+  if (identical(family, "logit-hazard")) {
+    stop("family='logit-hazard' is a cross-validated discrete-time hazard model; ",
+         "use hazard.hapc(X, T, Delta, ...) or cv.hapc(..., family='logit-hazard') ",
+         "instead of the single-lambda hapc().", call. = FALSE)
+  }
+
+  if (!is.matrix(X)) X <- as.matrix(X)
+  storage.mode(X) <- "double"
+  Y <- as.numeric(Y)
+  p <- ncol(X)
+
+  max_degree  <- as.integer(max_degree)
+  npcs        <- as.integer(npcs)
+  lambda      <- as.numeric(lambda)
+  max_iter    <- as.integer(max_iter)
+  tol         <- as.numeric(tol)
+  step_factor <- as.numeric(step_factor)
+  verbose     <- as.logical(verbose)
+  center      <- as.logical(center)
+  approx      <- as.logical(approx)
+
+  if (norm == "sv") .hapc_check_sv_inputs(X, Y, max_iter, tol, step_factor)
+
+  if (!is.null(predict)) predict <- matrix(predict, ncol = p)
+
+  if (family == "binomial") {
+    # Validate labels; allow soft labels in [0,1] only for norm in {"1","2"}.
+    kind <- .hapc_check_binomial_labels(Y, norm)
+    # C++ sv/2 paths expect Y in [0,1]; map {-1,+1} -> {0,1} if needed.
+    Y_01 <- if (kind == "pm1") (as.numeric(Y) + 1) / 2 else as.numeric(Y)
+    if (norm == "sv") {
+      res <- .Call(
+        "pchal_cv_classi_call",
+        X, Y_01,
+        max_degree, npcs,
+        as.numeric(lambda), 1L,
+        max_iter, tol,
+        step_factor, verbose, as.character(crit),
+        if (is.null(predict)) NULL else predict, center,
+        TRUE,  # with_pgd: logistic ridge + PGD on logistic loss
+        PACKAGE = "hapc"
+      )
+      # C++ returns probabilities in $predictions; add the linear predictor.
+      if (!is.null(res$predictions)) {
+        res$log_odds <- stats::qlogis(pmin(pmax(res$predictions, 1e-15), 1 - 1e-15))
+      }
+      return(res)
+    }
+    if (norm == "2") {
+      res <- .Call(
+        "single_pcghal_classi_ridge_call",
+        X, Y_01,
+        max_degree, npcs,
+        lambda,
+        if (is.null(predict)) NULL else predict, center,
+        PACKAGE = "hapc"
+      )
+      # C++ returns log-odds in $predictions: same convention as the other
+      # binomial paths (probabilities in $predictions, log-odds in $log_odds).
+      if (!is.null(res$predictions)) {
+        res$log_odds <- as.numeric(res$predictions)
+        res$predictions <- 1 / (1 + exp(-res$log_odds))
+      }
+      return(res)
+    }
+    if (norm == "1") {
+      return(.hapc_binomial_lasso(X, Y, max_degree, npcs, lambda,
+                                   predict = predict, center = center))
+    }
+    stop("family='binomial' supports norm in c('sv','1','2'); got '", norm, "'.")
+  }
+
+  if (norm == "sv") {
+    res <- .Call(
+      "single_pcghal_call",
+      X, Y,
+      max_degree, npcs,
+      lambda,
+      max_iter, tol,
+      step_factor, verbose, as.character(crit),
+      if (is.null(predict)) NULL else predict, center,
+      as.character(ini),
+      PACKAGE = "hapc"
+    )
+  } else if (norm == "2") {
+    res <- .Call(
+      "single_lambda_pchar",
+      X, Y, npcs,
+      lambda,
+      if (is.null(predict)) NULL else predict, max_degree,
+      center, approx, as.logical(0),
+      PACKAGE = "hapc"
+    )
+  } else {  # norm == "1"
+    res <- .Call(
+      "single_lambda_pchar",
+      X, Y, npcs,
+      lambda,
+      if (is.null(predict)) NULL else predict, max_degree,
+      center, approx, as.logical(1),
+      PACKAGE = "hapc"
+    )
+  }
+
+  res
+}

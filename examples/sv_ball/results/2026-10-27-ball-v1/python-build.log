@@ -1,0 +1,5 @@
+[  7%] Building CXX object CMakeFiles/hapc_core.dir/src/pcghal_call.cpp.o
+[ 15%] Building CXX object CMakeFiles/hapc_core.dir/src/pcghal_classi_call.cpp.o
+[ 23%] Linking CXX shared module /private/tmp/hapc-sv-ball-20261027/python/hapc/hapc_core.cpython-312-darwin.so
+ld: warning: search path '/opt/homebrew/Cellar/gcc/14.2.0/lib/gcc/14' not found
+[100%] Built target hapc_core

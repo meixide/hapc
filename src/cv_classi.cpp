@@ -11,6 +11,7 @@
 using Eigen::Map;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+void attach_sv_diagnostics(SEXP, const OptimizerOutput&);
 
 // 14th SEXP slot historically held `single_lambda` (unused). It is now
 // repurposed as `with_pgd_`: TRUE -> norm="sv" CV (logistic ridge + PGD),
@@ -107,6 +108,24 @@ extern "C" SEXP pchal_cv_classi_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
     SET_STRING_ELT(names, 3, Rf_mkChar("res_opt"));
     if (has_pred) SET_STRING_ELT(names, 4, Rf_mkChar("predictions"));
     Rf_setAttrib(final_out, R_NamesSymbol, names);
+    if(with_pgd) {
+        attach_sv_diagnostics(final_out,out.optimizer_output);
+        attach_sv_diagnostics(res_opt,out.optimizer_output);
+        SEXP states=PROTECT(Rf_allocVector(STRSXP,out.sv_fold_status.size()));prot++;
+        SEXP gaps=PROTECT(Rf_allocVector(REALSXP,out.sv_fold_gap.size()));prot++;
+        SEXP radii=PROTECT(Rf_allocVector(REALSXP,out.sv_fold_radius.size()));prot++;
+        for(int i=0;i<(int)out.sv_fold_status.size();++i) {
+            SET_STRING_ELT(states,i,Rf_mkChar(out.sv_fold_status[i].c_str()));
+            REAL(gaps)[i]=out.sv_fold_gap[i];REAL(radii)[i]=out.sv_fold_radius[i];
+        }
+        SEXP dimensions=PROTECT(Rf_allocVector(INTSXP,2));prot++;
+        INTEGER(dimensions)[0]=std::max(1,K);INTEGER(dimensions)[1]=L;
+        Rf_setAttrib(states,R_DimSymbol,dimensions);Rf_setAttrib(gaps,R_DimSymbol,dimensions);
+        Rf_setAttrib(radii,R_DimSymbol,dimensions);
+        Rf_setAttrib(final_out,Rf_install("sv_fold_status"),states);
+        Rf_setAttrib(final_out,Rf_install("sv_fold_gap"),gaps);
+        Rf_setAttrib(final_out,Rf_install("sv_fold_radius"),radii);
+    }
 
     UNPROTECT(prot);
     return final_out;

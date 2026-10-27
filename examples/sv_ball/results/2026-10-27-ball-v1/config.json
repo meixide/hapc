@@ -1,0 +1,16 @@
+{
+  "seed": "HAL:20261027+n; stress:0..19; reference:900..904",
+  "halt_sizes": [
+    32,
+    64,
+    128,
+    256
+  ],
+  "stress_cases": 40,
+  "reference_cases": 10,
+  "max_iter": 10000,
+  "tol": 1e-08,
+  "reference_tol": 1e-09,
+  "constraint": "coefficient SV <= radius from the same initial fit for both methods",
+  "note": "Synthetic optimisation validation, not CV calibration or a convergence-rate experiment."
+}

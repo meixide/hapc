@@ -13,6 +13,7 @@ reference:
   - hapc
   - cv.hapc
   - ate.hapc
+  - hapc.ate.tmle
 - title: Discrete-time survival
   desc: >
     Discrete-time logistic hazard (family = "logit-hazard") from right-censored

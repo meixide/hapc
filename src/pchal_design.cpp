@@ -86,6 +86,9 @@ DesignOutput pchal_des(const MatrixXd& X, int maxdeg, int npc, bool center) {
     // Cap npc at n-1 when center=true (rank reduction due to centering)
     // Cap npc at n when center=false
     int max_npc = center ? (n - 1) : n;
+    const double eigen_tol=8*std::numeric_limits<double>::epsilon()*n*std::max(0.0,evals.maxCoeff());
+    const int numerical_rank=(evals.array()>eigen_tol).count();
+    if(numerical_rank>0) max_npc=std::min(max_npc,numerical_rank);
     int npc_clamped = std::max(1, std::min(npc, max_npc));
     MatrixXd U = MatrixXd::Zero(n, npc_clamped);
     VectorXd d = VectorXd::Zero(npc_clamped);

@@ -33,8 +33,14 @@ cmake_build/
 .DS_Store
 Thumbs.db
 
-# Local experiments
-tests
+# Local experiments (retain selected regression tests)
+tests/*
+!tests/r/
+tests/r/*
+!tests/r/test_ate_tmle.R
+!tests/r/test_sv_descent.R
+!tests/test_sv_descent.py
+!tests/test_sv_ball.py
 
 # R
 .Rhistory

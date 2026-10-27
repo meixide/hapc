@@ -1,0 +1,30 @@
+{
+  "date": "2026-10-27",
+  "baseline_ref": "84bdb8ac54f0858965c29d6bb9d17c571500fe8a",
+  "python": "3.12.8",
+  "R": "4.3 arm64",
+  "builds": "isolated temporary libraries; sources saved in repository",
+  "sha256": {
+    "src/sv_descent.hpp": "3fc0b50451b2d166a42236b0537a5754e772899f4dbab12606c3b1b117f95c65",
+    "src/logistic_intercept.hpp": "991b17fe849866d63e400f6811c090daad97e2b9746f6887c2e1e09b09215f74",
+    "src/pcghal_call.cpp": "51b94457301f17ecd4297476ae0247320c7713dcd767528869196eb0686738d2",
+    "src/pcghal_classi_call.cpp": "380b682e0b73ae0a524ba9072e325aef86b6d3b0973c85afda5aa1b9b2d55e4c",
+    "src/hapc_core.hpp": "e2e58205cced95a0e699553ebad4bc276377ef4e392fa10fdee50e38ba48b301",
+    "src/bindings.cpp": "1dbf65d9450c1d16ae86f336e4dda42e88908773fae32f65a7dda5653950198b",
+    "src/r_bindings.cpp": "e3630b4bd4f19f7f4fde31f8a3718a6ca5e257a3432c808652250320129f019c",
+    "src/single_pcghal_cpp.cpp": "f232cac4902e9f43b10631a7112986cf8b1afa4b0a60328f043c843c5933c971",
+    "src/pcghal_cv_cpp.cpp": "5ec016fd2d535e07631ca3ca07871ce1d8ec5e5ed225adca9bbeb53c87936ae3",
+    "src/pcghal_cv_classi_cpp.cpp": "70651e060a2f4f82a0f878774d0676ca9f1a47efa4cd20b5700d0b3fef0712c3",
+    "python/hapc/core.py": "064d7e9106e5abbca0e0b09c8de844a764fab31faaf6a80edc4ba7177f8d4861",
+    "python/hapc/single.py": "bcffaadfa990855274b6deb00a49ad7db5e0b94f05c9da617483fb45c5d45237",
+    "R/hapc.R": "5ce7cd3c693dec06b50793b8e880eb4e748416403b6a3b30e3ed0a10b4a85de7",
+    "R/cv.hapc.R": "bf38d4e26da1b94117999ef1573ad0caa9330596cc4c0ce2d770d2ccbc6627ee",
+    "R/sv_controls.R": "7111f5644ac13273ce6dd78a2e5899226bf060a46ca12172c5fde55906dc34be",
+    "tests/test_sv_descent.py": "937e5f895a4d973429e1b76655f0065614d6641b326449f941d7408c0a0552ca",
+    "tests/r/test_sv_descent.R": "9f834cb4ec2970ddc6fb3dd43449e06b31543fd730d604e24df9fbd6b9bbad18",
+    "examples/sv_stress/stress.py": "3afe7c8b65cc5183c1e1ecdf3074e38c806b07c201d829d5152543ab113f4c5b",
+    "examples/sv_stress/baseline_compare.py": "0b6dd9e6f5fd1ae771d122e22b9e673620c77ee5058e9acb7a2750ce6a08277c",
+    "examples/sv_stress/native_bridge.cpp": "12b8581500dc9f8a9f3c92be8aad6106f4b653d67d7edfda310f6a68631e2744",
+    "examples/sv_stress/native_bridge.py": "9ef0279bba2559d64ff6ca7037503e10f303c14e57fca37e284accf88b3cdc24"
+  }
+}

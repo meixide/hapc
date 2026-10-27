@@ -21,7 +21,7 @@ hapc(
   center = TRUE,
   approx = FALSE,
   ini = c("1", "2"),
-  intercept = TRUE
+  intercept = NULL
 )
 }
 \arguments{
@@ -47,8 +47,8 @@ Default \code{1L} (additive HAL).}
 
 \item{norm}{Character: \code{"sv"}, \code{"1"} or \code{"2"}. Default
 \code{"sv"}. For \code{family = "binomial"} all three are supported and
-the loss is always logistic: \code{"sv"} = PGD on logistic loss with
-sectional-variation projection, \code{"2"} = logistic ridge (Newton-
+the loss is always logistic: \code{"sv"} = convex optimisation on logistic loss with
+a sectional-variation ball, \code{"2"} = logistic ridge (Newton-
 Raphson IRLS, no PGD), \code{"1"} = logistic LASSO via
 \code{glmnet::glmnet(..., family = "binomial", alpha = 1)} with an
 unpenalised intercept on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
@@ -59,21 +59,21 @@ design itself is never materialised.}
 \item{predict}{Optional numeric matrix of new observations (same number of
 columns as \code{X}). If supplied, predictions are returned in the result.}
 
-\item{max_iter}{Integer; maximum projected-gradient iterations (only used
+\item{max_iter}{Integer; maximum SV optimisation iterations (only used
 when \code{norm = "sv"}). Default \code{5000L}.}
 
-\item{tol}{Numeric; convergence tolerance (only used when
-\code{norm = "sv"}). Default \code{1e-3}.}
+\item{tol}{Numeric; relative primal-dual gap tolerance (only used when
+\code{norm = "sv"}). Stops when the gap is at most
+\code{tol * (1 + abs(risk))}. Default \code{1e-3}.}
 
-\item{step_factor}{Numeric; PGD line-search factor (only used when
-\code{norm = "sv"}). Default \code{0.8}.}
+\item{step_factor}{Legacy boundary-solver control; retained for call
+compatibility, validated in \code{(0,1)}, ignored by the SV-ball solver.}
 
 \item{verbose}{Logical; print progress (only used when \code{norm = "sv"}).
 Default \code{FALSE}.}
 
-\item{crit}{Character; PGD stopping criterion (only used when
-\code{norm = "sv"}): \code{"grad"} (gradient infinity-norm, default) or
-\code{"risk"} (relative risk decrease).}
+\item{crit}{Legacy boundary-solver criterion, \code{"grad"} or \code{"risk"}.
+Both now use the primal-dual gap for \code{norm = "sv"}.}
 
 \item{center}{Logical; whether to centre the kernel matrix and response.
 Default \code{TRUE}.}
@@ -82,21 +82,17 @@ Default \code{TRUE}.}
 (power iteration) for \code{norm \%in\% c("1","2")}. Ignored for
 \code{norm = "sv"}. Default \code{FALSE}.}
 
-\item{ini}{Character; initialiser for the projected-gradient solver when
+\item{ini}{Character; initialiser determining the SV-ball radius when
 \code{norm = "sv"}: \code{"1"} = LASSO via \code{fast_pchal_call}
 (default, matches Python), \code{"2"} = ridge via \code{ridge_call}.}
 
-\item{intercept}{Logical; only used when \code{family = "binomial"} and
-\code{norm = "1"}. \code{TRUE} (default) fits an unpenalised intercept
-jointly with the L1-penalised PC coefficients (standard logistic LASSO).
-\code{FALSE} reproduces the behaviour of hapc <= 2.6.0: the L1 path is
-fitted with the intercept fixed at 0 and the intercept is calibrated
-afterwards. Centring makes the PC columns orthogonal to 1, which removes
-the intercept from least squares but not from logistic regression: with
-\code{FALSE} the coefficients are fitted around p = 1/2 instead of the
-prevalence, which degrades the fit for unbalanced outcomes. Kept only
-for reproducibility. The \code{"sv"} and \code{"2"} binomial paths
-always fit an unpenalised intercept.}
+\item{intercept}{\code{NULL} (default), \code{TRUE} or \code{FALSE}.
+Every binomial fit includes an unpenalised intercept estimated jointly
+with the PC coefficients, so \code{intercept = FALSE} is an error for
+\code{family = "binomial"}. For \code{family = "gaussian"} the intercept
+is fitted exactly when \code{center = TRUE}; an explicit value that
+contradicts \code{center} is an error. \code{NULL} means "the intercept
+the model fits".}
 }
 \value{
 A named list whose structure depends on \code{family} and
@@ -108,17 +104,17 @@ A named list whose structure depends on \code{family} and
     basis, optional \code{predictions}, \code{lambda}.}
   \item{binomial, \code{norm = "sv"}}{Same layout as the one-lambda binomial
     CV C++ wrapper (\code{pchal_cv_classi_call} with \code{nfolds = 1}):
-    deviances grid, \code{best_lambda}, \code{best_alpha}, optional
-    probabilities in \code{predictions}.}
+    deviances grid, \code{best_lambda}, \code{res_opt}.}
   \item{binomial, \code{norm = "2"}}{Logistic ridge only: \code{alpha},
-    \code{risk}, \code{iter = 0}, optional \code{predictions} / class
-    outputs.}
+    \code{risk}, \code{iter = 0}, \code{lambda}.}
   \item{binomial, \code{norm = "1"}}{Logistic LASSO (\code{glmnet}):
     \code{alpha}, \code{intercept}, \code{lambda}, \code{risk},
-    \code{iter = 0L}, and
-    optional \code{predictions} (log-odds), \code{probabilities},
-    \code{predicted_classes}.}
+    \code{iter = 0L}.}
 }
+For every binomial fit, when \code{predict} is supplied,
+\code{predictions} holds the predicted \emph{probabilities} and
+\code{log_odds} the linear predictor (\code{\link{cv.hapc}} returns
+probabilities in \code{predictions} too).
 }
 \description{
 Fits the Highly Adaptive Principal Components (HAPC) model at a single
@@ -132,6 +128,20 @@ This is the R counterpart of the Python function \code{hapc.hapc()}.  All
 argument names, defaults, and behaviour are identical between R and Python
 (the only language-level difference is that Python uses \code{lambda_}
 since \code{lambda} is a reserved keyword there).
+
+
+For \code{norm = "sv"}, the solver minimises empirical risk over
+\eqn{\|V\alpha\|_1 \le C}, where \eqn{C=\|V\alpha_0\|_1}
+is set by the initial fit at \code{lambda}. The intercept is unpenalised
+and excluded from C. An interior optimum is allowed. The retained PC count
+is capped at the numerical rank of the HAL design.
+
+SV outputs have attributes \code{sv_status}, \code{sv_converged},
+\code{sv_radius}, \code{sv_risk}, \code{sv_iterations},
+\code{sv_optimality_gap}, \code{sv_dual_bound}, and residual diagnostics.
+A feasible fit returned at the iteration limit is not certified optimal.
+The \code{alphaiters} history, when present, contains feasible incumbents
+ranked by risk (ties at rounding precision use the dual gap).
 }
 \examples{
 \dontrun{

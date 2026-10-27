@@ -57,31 +57,12 @@ CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
       std::cout << "Design matrix: " << des.H.rows() << " x " << des.H.cols() << std::endl;
   }
   
-  // Step 2: Compute kernel matrix once
-  MatrixXd K = mkernel_call(X, maxdeg, center);
-  
-  // Step 3: Eigendecomposition
-  Eigen::SelfAdjointEigenSolver<MatrixXd> solver(K);
-  VectorXd evals = solver.eigenvalues();
-  MatrixXd evecs = solver.eigenvectors();
-  
-  // Sort descending
-  std::vector<int> idx(evals.size());
-  std::iota(idx.begin(), idx.end(), 0);
-  std::sort(idx.begin(), idx.end(), [&evals](int i, int j) {
-      return evals(i) > evals(j);
-  });
-  
-  MatrixXd U = MatrixXd::Zero(n, final_npc);
-  VectorXd D = VectorXd::Zero(final_npc);
-  VectorXd D2 = VectorXd::Zero(final_npc);
-  
-  for (int i = 0; i < final_npc; ++i) {
-      U.col(i) = evecs.col(idx[i]);
-      D(i) = std::sqrt(std::max(0.0, evals(idx[i])));
-      D2(i) = evals(idx[i]);
-  }
-  
+  // Use the SAME decomposition for scores and the SV penalty. Recomputing
+  // eigenvectors independently can change signs/rotate repeated eigenspaces.
+  const MatrixXd& U = des.U;
+  const VectorXd& D = des.d;
+  VectorXd D2 = D.array().square();
+
   // Xtilde = U * D
   MatrixXd Xtilde = U * D.asDiagonal();
   
@@ -90,6 +71,8 @@ CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
   
   // Step 4: K-fold CV
   std::vector<double> cv_mses(L, 0.0);
+  std::vector<std::string> statuses(L*nfolds,"not_run");
+  std::vector<double> gaps(L*nfolds,std::numeric_limits<double>::infinity()), radii(L*nfolds,0);
   
   // Fold indices: block partition with last fold absorbing the remainder, then
   // shuffled with std::mt19937(12345). Identical scheme to R's pchal_cv_call so
@@ -164,6 +147,9 @@ CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
                                             max_iter, tol, step_factor,
                                             /*verbose=*/false, crit);
 
+          statuses[j*nfolds+fold]=opt.status;
+          gaps[j*nfolds+fold]=opt.optimality_gap;
+          radii[j*nfolds+fold]=opt.sv_radius;
           VectorXd y_pred = Xtilde_test * opt.alpha;
           if (center) {
               y_pred.array() += ymean_train;
@@ -243,6 +229,8 @@ CVOutput pcghal_cv_fit(const MatrixXd& X, const VectorXd& Y,
   result.best_lambda = best_lambda;
   result.best_alpha = best_alpha;
   result.predictions = predictions;
+  result.optimizer_output=opt_full;
+  result.sv_fold_status=statuses;result.sv_fold_gap=gaps;result.sv_fold_radius=radii;
   
   return result;
 }

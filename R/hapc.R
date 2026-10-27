@@ -27,8 +27,8 @@
 #'   \code{0.01}.
 #' @param norm Character: \code{"sv"}, \code{"1"} or \code{"2"}. Default
 #'   \code{"sv"}. For \code{family = "binomial"} all three are supported and
-#'   the loss is always logistic: \code{"sv"} = PGD on logistic loss with
-#'   sectional-variation projection, \code{"2"} = logistic ridge (Newton-
+#'   the loss is always logistic: \code{"sv"} = convex optimisation on logistic loss with
+#'   a sectional-variation ball, \code{"2"} = logistic ridge (Newton-
 #'   Raphson IRLS, no PGD), \code{"1"} = logistic LASSO via
 #'   \code{glmnet::glmnet(..., family = "binomial", alpha = 1)} with an
 #'   unpenalised intercept on \eqn{\tilde{X} = U \cdot \mathrm{diag}(d)}
@@ -37,23 +37,23 @@
 #'   design itself is never materialised.
 #' @param predict Optional numeric matrix of new observations (same number of
 #'   columns as \code{X}). If supplied, predictions are returned in the result.
-#' @param max_iter Integer; maximum projected-gradient iterations (only used
+#' @param max_iter Integer; maximum SV optimisation iterations (only used
 #'   when \code{norm = "sv"}). Default \code{5000L}.
-#' @param tol Numeric; convergence tolerance (only used when
-#'   \code{norm = "sv"}). Default \code{1e-3}.
-#' @param step_factor Numeric; PGD line-search factor (only used when
-#'   \code{norm = "sv"}). Default \code{0.8}.
+#' @param tol Numeric; relative primal-dual gap tolerance (only used when
+#'   \code{norm = "sv"}). Stops when the gap is at most
+#'   \code{tol * (1 + abs(risk))}. Default \code{1e-3}.
+#' @param step_factor Legacy boundary-solver control; retained for call
+#'   compatibility, validated in \code{(0,1)}, ignored by the SV-ball solver.
 #' @param verbose Logical; print progress (only used when \code{norm = "sv"}).
 #'   Default \code{FALSE}.
-#' @param crit Character; PGD stopping criterion (only used when
-#'   \code{norm = "sv"}): \code{"grad"} (gradient infinity-norm, default) or
-#'   \code{"risk"} (relative risk decrease).
+#' @param crit Legacy boundary-solver criterion, \code{"grad"} or \code{"risk"}.
+#'   Both now use the primal-dual gap for \code{norm = "sv"}.
 #' @param center Logical; whether to centre the kernel matrix and response.
 #'   Default \code{TRUE}.
 #' @param approx Logical; if \code{TRUE} use approximate eigendecomposition
 #'   (power iteration) for \code{norm \%in\% c("1","2")}. Ignored for
 #'   \code{norm = "sv"}. Default \code{FALSE}.
-#' @param ini Character; initialiser for the projected-gradient solver when
+#' @param ini Character; initialiser determining the SV-ball radius when
 #'   \code{norm = "sv"}: \code{"1"} = LASSO via \code{fast_pchal_call}
 #'   (default, matches Python), \code{"2"} = ridge via \code{ridge_call}.
 #' @param intercept \code{NULL} (default), \code{TRUE} or \code{FALSE}.
@@ -84,6 +84,20 @@
 #' \code{predictions} holds the predicted \emph{probabilities} and
 #' \code{log_odds} the linear predictor (\code{\link{cv.hapc}} returns
 #' probabilities in \code{predictions} too).
+#'
+#' @details
+#' For \code{norm = "sv"}, the solver minimises empirical risk over
+#' \eqn{\|V\alpha\|_1 \le C}, where \eqn{C=\|V\alpha_0\|_1}
+#' is set by the initial fit at \code{lambda}. The intercept is unpenalised
+#' and excluded from C. An interior optimum is allowed. The retained PC count
+#' is capped at the numerical rank of the HAL design.
+#'
+#' SV outputs have attributes \code{sv_status}, \code{sv_converged},
+#' \code{sv_radius}, \code{sv_risk}, \code{sv_iterations},
+#' \code{sv_optimality_gap}, \code{sv_dual_bound}, and residual diagnostics.
+#' A feasible fit returned at the iteration limit is not certified optimal.
+#' The \code{alphaiters} history, when present, contains feasible incumbents
+#' ranked by risk (ties at rounding precision use the dual gap).
 #'
 #' @examples
 #' \dontrun{
@@ -139,6 +153,8 @@ hapc <- function(X, Y,
   verbose     <- as.logical(verbose)
   center      <- as.logical(center)
   approx      <- as.logical(approx)
+
+  if (norm == "sv") .hapc_check_sv_inputs(X, Y, max_iter, tol, step_factor)
 
   if (!is.null(predict)) predict <- matrix(predict, ncol = p)
 

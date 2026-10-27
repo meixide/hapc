@@ -57,10 +57,10 @@
 #' with logistic loss):
 #' \describe{
 #'   \item{\code{family = "gaussian"}}{\code{norm = "sv"} → ridge/LASSO init +
-#'     PGD on squared error per fold; \code{norm \%in\% c("1","2")} → closed
+#'     SV-ball optimisation on squared error per fold; \code{norm \%in\% c("1","2")} → closed
 #'     form LASSO/ridge in PC basis, MSE per fold.}
 #'   \item{\code{family = "binomial"}, \code{norm = "sv"}}{Logistic ridge init +
-#'     projected gradient descent on logistic loss per fold, with an
+#'     SV-ball optimisation on logistic loss per fold, with an
 #'     unpenalised intercept profiled out at every step; logistic deviance
 #'     scoring.}
 #'   \item{\code{family = "binomial"}, \code{norm = "2"}}{Logistic ridge only
@@ -74,6 +74,13 @@
 #'     kernel and \code{glmnet} fits the whole lambda grid on them. Requires
 #'     the \code{glmnet} package (in \code{Suggests}).}
 #' }
+#'
+#' For \code{norm = "sv"}, every candidate fit uses its initialiser's radius;
+#' the outer CV rule and basis construction are unchanged. Fold diagnostics
+#' are in attributes \code{sv_fold_status}, \code{sv_fold_gap}, and
+#' \code{sv_fold_radius} (rows = folds, columns = lambdas). Refit diagnostics
+#' are on \code{res_opt}; binomial outputs also expose them at the top level.
+#' Numerical optimisation certificates do not validate the CV tuning rule.
 #'
 #' @examples
 #' \dontrun{
@@ -152,6 +159,8 @@ cv.hapc <- function(X, Y,
   verbose        <- as.logical(verbose)
   center         <- as.logical(center)
   approx         <- as.logical(approx)
+
+  if (norm == "sv") .hapc_check_sv_inputs(X, Y, max_iter, tol, step_factor)
 
   if (!is.null(predict)) predict <- matrix(predict, ncol = p)
 

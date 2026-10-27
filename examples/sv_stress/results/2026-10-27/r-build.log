@@ -1,0 +1,22 @@
+* installing *source* package ‘hapc’ ...
+** using staged installation
+** libs
+using C compiler: ‘Apple clang version 15.0.0 (clang-1500.3.9.4)’
+using C++ compiler: ‘Apple clang version 15.0.0 (clang-1500.3.9.4)’
+using C++17
+using SDK: ‘MacOSX14.4.sdk’
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c pcghal_call.cpp -o pcghal_call.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c pcghal_classi_call.cpp -o pcghal_classi_call.o
+clang++ -arch arm64 -std=gnu++17 -dynamiclib -Wl,-headerpad_max_install_names -undefined dynamic_lookup -L/Library/Frameworks/R.framework/Resources/lib -L/opt/homebrew/Cellar/gcc/14.2.0/lib/gcc/14 -L/opt/homebrew/lib -o hapc.so r_bindings.o pchal_design.o ridge_wrappers.o mkernel.o cross_kernel.o pcghal_call.o pcghal_classi_call.o fast_pchal.o single_pchar.o cv_fast_pchal.o pcghal_cv.o cv_classi.o pcghal_cv_classi_cpp.o -pthread -F/Library/Frameworks/R.framework/.. -framework R -Wl,-framework -Wl,CoreFoundation
+ld: warning: search path '/opt/homebrew/Cellar/gcc/14.2.0/lib/gcc/14' not found
+installing to /private/tmp/hapc-sv-20261027/r-lib/00LOCK-r-source/00new/hapc/libs
+** R
+** byte-compile and prepare package for lazy loading
+** help
+*** installing help indices
+** building package indices
+** testing if installed package can be loaded from temporary location
+** checking absolute paths in shared objects and dynamic libraries
+** testing if installed package can be loaded from final location
+** testing if installed package keeps a record of temporary installation path
+* DONE (hapc)

@@ -1,0 +1,169 @@
+* installing *source* package ‘hapc’ ...
+** using staged installation
+** libs
+using C compiler: ‘Apple clang version 15.0.0 (clang-1500.3.9.4)’
+using C++ compiler: ‘Apple clang version 15.0.0 (clang-1500.3.9.4)’
+using C++17
+using SDK: ‘MacOSX14.4.sdk’
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c r_bindings.cpp -o r_bindings.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c pchal_design.cpp -o pchal_design.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c ridge_wrappers.cpp -o ridge_wrappers.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c mkernel.cpp -o mkernel.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c cross_kernel.cpp -o cross_kernel.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c pcghal_call.cpp -o pcghal_call.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c pcghal_classi_call.cpp -o pcghal_classi_call.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c fast_pchal.cpp -o fast_pchal.o
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c single_pchar.cpp -o single_pchar.o
+In file included from single_pchar.cpp:21:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/Sparse:26:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/SparseCore:61:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseCore/TriangularSolver.h:273:13: warning: variable 'count' set but not used [-Wunused-but-set-variable]
+      Index count = 0;
+            ^
+In file included from single_pchar.cpp:21:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/Sparse:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/SparseLU:35:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h:78:9: warning: variable 'nsuper_et_post' set but not used [-Wunused-but-set-variable]
+  Index nsuper_et_post = 0; // Number of relaxed snodes in postordered etree 
+        ^
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h:79:9: warning: variable 'nsuper_et' set but not used [-Wunused-but-set-variable]
+  Index nsuper_et = 0; // Number of relaxed snodes in the original etree 
+        ^
+In file included from single_pchar.cpp:21:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:31:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/IterativeSolvers:46:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/src/IterativeSolvers/IDRS.h:72:10: warning: variable 'replacements' set but not used [-Wunused-but-set-variable]
+                        Index replacements = 0;
+                              ^
+In file included from single_pchar.cpp:21:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:37:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/SparseExtra:45:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/src/SparseExtra/MarketIO.h:246:7: warning: variable 'count' set but not used [-Wunused-but-set-variable]
+  int count = 0;
+      ^
+5 warnings generated.
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c cv_fast_pchal.cpp -o cv_fast_pchal.o
+In file included from cv_fast_pchal.cpp:21:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/Sparse:26:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/SparseCore:61:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseCore/TriangularSolver.h:273:13: warning: variable 'count' set but not used [-Wunused-but-set-variable]
+      Index count = 0;
+            ^
+In file included from cv_fast_pchal.cpp:21:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/Sparse:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/SparseLU:35:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h:78:9: warning: variable 'nsuper_et_post' set but not used [-Wunused-but-set-variable]
+  Index nsuper_et_post = 0; // Number of relaxed snodes in postordered etree 
+        ^
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h:79:9: warning: variable 'nsuper_et' set but not used [-Wunused-but-set-variable]
+  Index nsuper_et = 0; // Number of relaxed snodes in the original etree 
+        ^
+In file included from cv_fast_pchal.cpp:21:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:31:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/IterativeSolvers:46:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/src/IterativeSolvers/IDRS.h:72:10: warning: variable 'replacements' set but not used [-Wunused-but-set-variable]
+                        Index replacements = 0;
+                              ^
+In file included from cv_fast_pchal.cpp:21:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:37:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/SparseExtra:45:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/src/SparseExtra/MarketIO.h:246:7: warning: variable 'count' set but not used [-Wunused-but-set-variable]
+  int count = 0;
+      ^
+5 warnings generated.
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c pcghal_cv.cpp -o pcghal_cv.o
+In file included from pcghal_cv.cpp:3:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/Sparse:26:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/SparseCore:61:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseCore/TriangularSolver.h:273:13: warning: variable 'count' set but not used [-Wunused-but-set-variable]
+      Index count = 0;
+            ^
+In file included from pcghal_cv.cpp:3:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/Sparse:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/SparseLU:35:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h:78:9: warning: variable 'nsuper_et_post' set but not used [-Wunused-but-set-variable]
+  Index nsuper_et_post = 0; // Number of relaxed snodes in postordered etree 
+        ^
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h:79:9: warning: variable 'nsuper_et' set but not used [-Wunused-but-set-variable]
+  Index nsuper_et = 0; // Number of relaxed snodes in the original etree 
+        ^
+In file included from pcghal_cv.cpp:3:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:31:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/IterativeSolvers:46:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/src/IterativeSolvers/IDRS.h:72:10: warning: variable 'replacements' set but not used [-Wunused-but-set-variable]
+                        Index replacements = 0;
+                              ^
+In file included from pcghal_cv.cpp:3:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:37:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/SparseExtra:45:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/src/SparseExtra/MarketIO.h:246:7: warning: variable 'count' set but not used [-Wunused-but-set-variable]
+  int count = 0;
+      ^
+5 warnings generated.
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c cv_classi.cpp -o cv_classi.o
+In file included from cv_classi.cpp:7:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/Sparse:26:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/SparseCore:61:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseCore/TriangularSolver.h:273:13: warning: variable 'count' set but not used [-Wunused-but-set-variable]
+      Index count = 0;
+            ^
+In file included from cv_classi.cpp:7:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/Sparse:29:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/SparseLU:35:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h:78:9: warning: variable 'nsuper_et_post' set but not used [-Wunused-but-set-variable]
+  Index nsuper_et_post = 0; // Number of relaxed snodes in postordered etree 
+        ^
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/Eigen/src/SparseLU/SparseLU_heap_relax_snode.h:79:9: warning: variable 'nsuper_et' set but not used [-Wunused-but-set-variable]
+  Index nsuper_et = 0; // Number of relaxed snodes in the original etree 
+        ^
+In file included from cv_classi.cpp:7:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:31:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/IterativeSolvers:46:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/src/IterativeSolvers/IDRS.h:72:10: warning: variable 'replacements' set but not used [-Wunused-but-set-variable]
+                        Index replacements = 0;
+                              ^
+In file included from cv_classi.cpp:7:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigen.h:25:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/RcppEigenForward.h:37:
+In file included from /Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/SparseExtra:45:
+/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include/unsupported/Eigen/src/SparseExtra/MarketIO.h:246:7: warning: variable 'count' set but not used [-Wunused-but-set-variable]
+  int count = 0;
+      ^
+5 warnings generated.
+clang++ -arch arm64 -std=gnu++17 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG  -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/Rcpp/include' -I'/Library/Frameworks/R.framework/Versions/4.3-arm64/Resources/library/RcppEigen/include' -I/opt/R/arm64/include   -std=c++17 -I../src -pthread -fPIC  -falign-functions=64 -Wall -g -O2  -c pcghal_cv_classi_cpp.cpp -o pcghal_cv_classi_cpp.o
+clang++ -arch arm64 -std=gnu++17 -dynamiclib -Wl,-headerpad_max_install_names -undefined dynamic_lookup -L/Library/Frameworks/R.framework/Resources/lib -L/opt/homebrew/Cellar/gcc/14.2.0/lib/gcc/14 -L/opt/homebrew/lib -o hapc.so r_bindings.o pchal_design.o ridge_wrappers.o mkernel.o cross_kernel.o pcghal_call.o pcghal_classi_call.o fast_pchal.o single_pchar.o cv_fast_pchal.o pcghal_cv.o cv_classi.o pcghal_cv_classi_cpp.o -pthread -F/Library/Frameworks/R.framework/.. -framework R -Wl,-framework -Wl,CoreFoundation
+ld: warning: search path '/opt/homebrew/Cellar/gcc/14.2.0/lib/gcc/14' not found
+installing to /private/tmp/hapc-tmle/library/00LOCK-current-package/00new/hapc/libs
+** R
+** byte-compile and prepare package for lazy loading
+** help
+*** installing help indices
+** building package indices
+** testing if installed package can be loaded from temporary location
+** checking absolute paths in shared objects and dynamic libraries
+** testing if installed package can be loaded from final location
+** testing if installed package keeps a record of temporary installation path
+* DONE (hapc)

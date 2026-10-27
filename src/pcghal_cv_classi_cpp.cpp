@@ -13,6 +13,7 @@
 // languages.
 
 #include "hapc_core.hpp"
+#include "logistic_intercept.hpp"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -96,20 +97,7 @@ VectorXd logistic_ridge_init(const VectorXd& Y_pm1, const MatrixXd& X, double la
 
 static double calibrate_logistic_intercept(const VectorXd& Y01,
                                            const VectorXd& eta) {
-    const int n = (int)Y01.size();
-    if (eta.size() != n) {
-        throw std::runtime_error("calibrate_logistic_intercept: length mismatch");
-    }
-    double b0 = 0.0;
-    for (int it = 0; it < 50; ++it) {
-        const VectorXd z = eta.array() + b0;
-        const VectorXd p = (1.0 + (-z.array()).exp()).inverse();
-        const double g = (p - Y01).sum();
-        const double h = (p.array() * (1.0 - p.array())).sum();
-        if (std::abs(g) < 1e-10 || h < 1e-12) break;
-        b0 -= g / h;
-    }
-    return b0;
+    return profile_logistic_intercept(Y01, eta);
 }
 
 // Soft cross-entropy risk for fractional targets y01 in [0,1], given a linear
@@ -186,7 +174,7 @@ static OptimizerOutput logistic_full_fit(const VectorXd& Y01,
         for (int i = 0; i < n; ++i) Y_pm1[i] = (Y01[i] > 0.5) ? 1.0 : -1.0;
         OptimizerOutput out = pcghal_classi_call(Y_pm1, Xtilde, E_Nn, alpha0,
                                                  max_iter, tol, step_factor, verbose);
-        alpha_fit = out.alpha;
+        return out;
     } else {
         alpha_fit = alpha0;  // logistic ridge only (norm="2")
     }
@@ -229,6 +217,8 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
             "norm='sv'; use norm='1' or norm='2'.");
     }
     const int L = (int)lambdas.size();
+    std::vector<std::string> statuses(L*std::max(1,nfolds),"not_run");
+    std::vector<double> gaps(statuses.size(),std::numeric_limits<double>::infinity()), radii(statuses.size(),0);
     if (L <= 0) throw std::runtime_error("pcghal_cv_classi: lambdas must be non-empty");
 
     // Cap npc as in cv_classi.cpp
@@ -254,6 +244,7 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
     if (nfolds <= 1) {
         std::vector<double> deviances(L, std::numeric_limits<double>::quiet_NaN());
         VectorXd best_alpha;
+        OptimizerOutput best_optimizer;
         double best_lambda = lambdas[0];
         double best_val = std::numeric_limits<double>::infinity();
         for (int j = 0; j < L; ++j) {
@@ -262,10 +253,12 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
                 Y01, Xtilde, E_Nn, lam, max_iter, tol, step_factor,
                 verbose, with_pgd);
             deviances[j] = full_out.risk;
+            statuses[j]=full_out.status;gaps[j]=full_out.optimality_gap;radii[j]=full_out.sv_radius;
             if (full_out.risk < best_val) {
                 best_val = full_out.risk;
                 best_lambda = lam;
                 best_alpha = full_out.alpha;
+                best_optimizer=full_out;
             }
         }
         VectorXd predictions = VectorXd::Zero(0);
@@ -289,6 +282,8 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
         out.best_lambda = best_lambda;
         out.best_alpha = best_alpha;
         out.predictions = predictions;
+        out.optimizer_output=best_optimizer;
+        out.sv_fold_status=statuses;out.sv_fold_gap=gaps;out.sv_fold_radius=radii;
         return out;
     }
 
@@ -331,6 +326,8 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
                                                           max_iter, tol, step_factor,
                                                           verbose);
                 alpha_fold = out.alpha;
+                statuses[j*nfolds+k-1]=out.status;
+                gaps[j*nfolds+k-1]=out.optimality_gap;radii[j*nfolds+k-1]=out.sv_radius;
             } else {
                 alpha_fold = alpha0;  // logistic ridge only (norm="2")
             }
@@ -398,5 +395,7 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
     out.best_lambda = best_lambda;
     out.best_alpha = full_out.alpha;
     out.predictions = predictions;
+    out.optimizer_output=full_out;
+    out.sv_fold_status=statuses;out.sv_fold_gap=gaps;out.sv_fold_radius=radii;
     return out;
 }

@@ -40,40 +40,12 @@ SinglePcghalOutput single_pcghal_fit(const MatrixXd& X, const VectorXd& Y,
       std::cout << "  Final npc: " << final_npc << std::endl;
   }
   
-  // Step 2: Compute kernel matrix
-  MatrixXd K = mkernel_call(X, maxdeg, center);
-  
-  // Step 3: Eigendecomposition
-  Eigen::SelfAdjointEigenSolver<MatrixXd> solver(K);
-  VectorXd evals = solver.eigenvalues();
-  MatrixXd evecs = solver.eigenvectors();
-  
-  // Sort descending
-  std::vector<int> idx(evals.size());
-  std::iota(idx.begin(), idx.end(), 0);
-  std::sort(idx.begin(), idx.end(), [&evals](int i, int j) {
-      return evals(i) > evals(j);
-  });
-  
-  MatrixXd U = MatrixXd::Zero(n, final_npc);
-  VectorXd D = VectorXd::Zero(final_npc);
-  VectorXd D2 = VectorXd::Zero(final_npc);
-  
-  for (int i = 0; i < final_npc; ++i) {
-      U.col(i) = evecs.col(idx[i]);
-      D(i) = std::sqrt(std::max(0.0, evals(idx[i])));
-      D2(i) = evals(idx[i]);
-  }
-  
-  if (verbose) {
-      std::cout << "Kernel eigendecomposition:" << std::endl;
-      std::cout << "  Top 5 eigenvalues: ";
-      for (int i = 0; i < std::min(5, (int)evals.size()); ++i) {
-          std::cout << evals(idx[i]) << " ";
-      }
-      std::cout << std::endl;
-  }
-  
+  // Use the SAME decomposition for scores and the SV penalty. Recomputing
+  // eigenvectors independently can change signs/rotate repeated eigenspaces.
+  const MatrixXd& U = des.U;
+  const VectorXd& D = des.d;
+  VectorXd D2 = D.array().square();
+
   // Step 4: Create Xtilde = U * D
   MatrixXd Xtilde = U * D.asDiagonal();
   
@@ -176,6 +148,7 @@ SinglePcghalOutput single_pcghal_fit(const MatrixXd& X, const VectorXd& Y,
   result.lambda_val = single_lambda;
   result.risk = opt_out.risk;
   result.iter = opt_out.iter;
+  result.optimizer_output = opt_out;
   
   return result;
 }

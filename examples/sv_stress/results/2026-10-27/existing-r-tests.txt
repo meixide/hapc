@@ -1,0 +1,3 @@
+test_binomial_lasso.R: FAIL 0, WARN 200, SKIP 0, PASS 77.
+Warnings in this environment: withr/testthat changing language under LC_ALL=C.UTF-8.
+No assertion failures.

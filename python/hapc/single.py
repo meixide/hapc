@@ -63,6 +63,7 @@ class SinglePcghalClassificationResult(NamedTuple):
     risk: float
     iter: int
     intercept: Optional[float] = None      # unpenalised intercept b0
+    optimizer_output: Optional[OptimizerOutput] = None
 
 
 # ---------------------------------------------------------------------------
@@ -152,20 +153,31 @@ def _check_binomial_labels(Y: np.ndarray, norm: str) -> str:
 
 
 def _calibrate_logistic_intercept(y01: np.ndarray, eta: np.ndarray) -> float:
-    """Newton calibration for intercept with fixed linear predictor ``eta``."""
+    """Safeguarded intercept calibration, including a finite one-class limit."""
+    from scipy.special import expit
     y01 = np.asarray(y01, dtype=np.float64).ravel()
     eta = np.asarray(eta, dtype=np.float64).ravel()
-    if y01.shape != eta.shape:
-        raise ValueError("y01 and eta must have the same shape")
-    b0 = 0.0
-    for _ in range(50):
-        z = eta + b0
-        p = 1.0 / (1.0 + np.exp(-z))
-        g = float(np.sum(p - y01))
-        h = float(np.sum(p * (1.0 - p)))
-        if abs(g) < 1e-10 or h < 1e-12:
+    if y01.shape != eta.shape or not y01.size:
+        raise ValueError("y01 and eta must have the same nonempty shape")
+    prevalence = float(y01.mean())
+    if prevalence <= 0:
+        return float(-40 - eta.max())
+    if prevalence >= 1:
+        return float(40 - eta.min())
+    logit = np.log(prevalence / (1 - prevalence))
+    lo, hi = logit - eta.max(), logit - eta.min()
+    b0 = lo / 2 + hi / 2
+    for _ in range(120):
+        p = expit(eta + b0)
+        g, h = float(np.sum(p-y01)), float(np.sum(p*(1-p)))
+        if abs(g) < 1e-12 * y01.size:
             break
-        b0 -= g / h
+        if g > 0:
+            hi = b0
+        else:
+            lo = b0
+        trial = b0 - g/h if h > 0 else lo/2 + hi/2
+        b0 = trial if np.isfinite(trial) and lo < trial < hi else lo/2 + hi/2
     return float(b0)
 
 
@@ -256,7 +268,7 @@ def single_pcghal(X: np.ndarray, Y: np.ndarray,
                   tol: float = 1e-3, step_factor: float = 0.8,
                   crit: str = "grad",
                   ini: str = "1") -> SinglePcghalResult:
-    """Single-λ gaussian fit with PGD (``norm="sv"``).
+    """Single-λ gaussian fit over the convex SV ball (``norm="sv"``).
 
     Calls C++ ``single_pcghal_fit``, which initialises α with LASSO
     (``ini="1"``, default) or ridge (``ini="2"``), then runs projected gradient
@@ -288,18 +300,11 @@ def single_pcghal(X: np.ndarray, Y: np.ndarray,
         str(crit), bool(center), bool(approx), str(ini),
     )
 
-    # Reconstruct β = V α (exposed for symmetry with the R output)
-    des = design_hapc(X, max_degree, npcs, center=center)
-    final_npc = des.d.shape[0]
-    beta = des.V[:, :final_npc] @ res.alpha
-
+    native_opt = res.optimizer_output
+    opt = OptimizerOutput(*(getattr(native_opt, name) for name in OptimizerOutput._fields))
     predictions = res.predictions if (predict is not None
                                       and res.predictions.size > 0) else None
 
-    opt = OptimizerOutput(
-        alpha=res.alpha, alphaiters=res.alpha.reshape(1, -1),
-        beta=beta, risk=res.risk, iter=res.iter,
-    )
     return SinglePcghalResult(
         alpha=res.alpha, predictions=predictions,
         lambda_=float(lambda_), optimizer_output=opt,
@@ -318,10 +323,10 @@ def single_pcghal_classification(
     center: bool = True, verbose: bool = False,
     max_iter: int = 5000, tol: float = 1e-3, step_factor: float = 0.8,
 ) -> SinglePcghalClassificationResult:
-    """Single-λ binomial HAPC with ``norm="sv"`` (logistic loss + PGD).
+    """Single-λ binomial HAPC with ``norm="sv"`` (logistic loss on the SV ball).
 
     Matches R ``hapc(..., family="binomial", norm="sv")``: logistic ridge
-    initialisation for α, then the same projected-gradient optimiser as
+    initialisation for α, then the same SV-ball optimiser as
     ``pcghal_classi_call``.
 
     Parameters
@@ -343,13 +348,13 @@ def single_pcghal_classification(
     center : bool, default True
         Centre the HAL design.
     verbose : bool, default False
-        Print PGD diagnostics.
+        Print SV solver diagnostics.
     max_iter : int, default 5000
-        Maximum PGD iterations.
+        Maximum SV optimisation iterations.
     tol : float, default 1e-3
-        Convergence tolerance for PGD.
+        Relative primal-dual gap tolerance.
     step_factor : float, default 0.8
-        PGD step-size factor.
+        Legacy control; ignored by the SV-ball solver.
 
     Returns
     -------
@@ -394,6 +399,7 @@ def single_pcghal_classification(
     return SinglePcghalClassificationResult(
         alpha=res.alpha, predictions=predictions, log_odds=log_odds,
         lambda_=float(lambda_), risk=risk, iter=res.iter, intercept=float(b0),
+        optimizer_output=res,
     )
 
 
@@ -753,27 +759,27 @@ def hapc(X: np.ndarray, Y: np.ndarray,
     lambda_ : float, default 0.01
         Regularisation parameter.
     norm : {"sv", "1", "2"}, default "sv"
-        Norm constraint. ``"sv"`` runs PGD, ``"1"`` is closed-form LASSO,
+        Norm constraint. ``"sv"`` solves the convex SV ball, ``"1"`` is closed-form LASSO,
         ``"2"`` is closed-form ridge.
     predict : np.ndarray, optional
         Test features for prediction.
     max_iter : int, default 5000
-        Maximum PGD iterations (``norm="sv"`` only).
+        Maximum SV optimisation iterations (``norm="sv"`` only).
     tol : float, default 1e-3
         Convergence tolerance (``norm="sv"`` only).
     step_factor : float, default 0.8
-        PGD step factor (``norm="sv"`` only).
+        Legacy control; ignored by the SV-ball solver.
     verbose : bool, default False
         Print progress (``norm="sv"`` only).
     crit : {"grad", "risk"}, default "grad"
-        PGD stopping criterion.
+        Legacy selector; the ball solver always uses the primal-dual gap.
     center : bool, default True
         Centre H and Y.
     approx : bool, default False
         Use approximate eigendecomposition for ``norm in {"1","2"}`` (currently
         ignored — exact eigendecomposition is always used).
     ini : {"1", "2"}, default "1"
-        PGD initialiser for ``norm="sv"``: ``"1"`` = LASSO (default, matches R),
+        Radius initialiser for ``norm="sv"``: ``"1"`` = LASSO (default, matches R),
         ``"2"`` = ridge.
     intercept : bool or None, default None
         Every binomial fit includes an unpenalised intercept estimated jointly

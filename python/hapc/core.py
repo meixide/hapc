@@ -50,13 +50,21 @@ class OptimizerOutput(NamedTuple):
     alpha : np.ndarray, shape (npcs,)
         Coefficients on the principal-component basis.
     alphaiters : np.ndarray
-        History of α iterates (rows = iterations).
+        Feasible incumbent history (rows = optimisation iterations).
     beta : np.ndarray
         Coefficients on the original HAL basis (``β = V α``).
     risk : float
         Empirical risk at the final iterate.
     iter : int
-        Number of iterations executed.
+        Number of optimisation iterations executed.
+    converged, status : bool, str
+        A ball fit is certified numerically only when converged is True.
+    optimality_gap, dual_bound : float
+        Primal-minus-dual bound and lower bound on the global optimum.
+    sv_radius : float
+        Radius for ||V alpha||1; excludes the intercept.
+    tangent_norm : float
+        Legacy boundary score; NaN for ball fits.
     """
 
     alpha: np.ndarray
@@ -64,6 +72,20 @@ class OptimizerOutput(NamedTuple):
     beta: np.ndarray
     risk: float
     iter: int
+    status: str = "not_reported"
+    sv_radius: float = 0.0
+    tangent_norm: float = 0.0
+    constraint: str = "boundary"
+    converged: bool = False
+    optimality_gap: float = float("inf")
+    dual_bound: float = -float("inf")
+    dual_residual: float = float("inf")
+    primal_residual: float = 0.0
+    constraint_violation: float = 0.0
+
+
+def _optimizer_output(native):
+    return OptimizerOutput(*(getattr(native, name) for name in OptimizerOutput._fields))
 
 
 def _C(x: np.ndarray, dtype=np.float64) -> np.ndarray:
@@ -214,7 +236,7 @@ def pcghal(Y: np.ndarray, Xtilde: np.ndarray, ENn: np.ndarray,
            alpha0: np.ndarray, max_iter: int = 5000, tol: float = 1e-3,
            step_factor: float = 0.8, verbose: bool = False,
            crit: str = "grad") -> OptimizerOutput:
-    """Projected gradient descent for ``norm="sv"``, gaussian loss.
+    """Convex SV-ball optimisation for ``norm="sv"``, gaussian loss.
 
     Counterpart to R ``pcghal_call()`` (called by ``hapc(norm="sv")``).
 
@@ -229,16 +251,16 @@ def pcghal(Y: np.ndarray, Xtilde: np.ndarray, ENn: np.ndarray,
     alpha0 : np.ndarray, shape (k,)
         Initial α (e.g. from :func:`fast_pchal` or :func:`ridge_regression`).
     max_iter : int, default 5000
-        Maximum number of PGD iterations.
+        Maximum number of SV optimisation iterations.
     tol : float, default 1e-3
         Stopping tolerance.
     step_factor : float, default 0.8
-        Step-size factor ``δ = step_factor / max_j |h*(j)|``.
+        Legacy boundary control, validated in (0,1); ignored by the ball solver.
     verbose : bool, default False
         Print iteration progress.
     crit : str, default "grad"
-        Stopping criterion: ``"grad"`` (gradient inf-norm) or ``"risk"``
-        (relative risk decrease).
+        Legacy ``"grad"``/``"risk"`` selector. Both use the gap bound
+        ``tol * (1 + abs(risk))``. Inspect ``converged`` and ``optimality_gap``.
 
     Returns
     -------
@@ -247,15 +269,14 @@ def pcghal(Y: np.ndarray, Xtilde: np.ndarray, ENn: np.ndarray,
     res = hapc_core.pcghal_call(_C(Y), _C(Xtilde), _C(ENn), _C(alpha0),
                                 int(max_iter), float(tol),
                                 float(step_factor), bool(verbose), str(crit))
-    return OptimizerOutput(res.alpha, res.alphaiters, res.beta,
-                           res.risk, res.iter)
+    return _optimizer_output(res)
 
 
 def pcghal_classification(Y: np.ndarray, Xtilde: np.ndarray, ENn: np.ndarray,
                           alpha0: np.ndarray, max_iter: int = 5000,
                           tol: float = 1e-3, step_factor: float = 0.8,
                           verbose: bool = False) -> OptimizerOutput:
-    """Projected gradient descent for ``norm="sv"``, logistic loss.
+    """Convex SV-ball optimisation for ``norm="sv"``, logistic loss.
 
     Counterpart to R ``pcghal_classi_call()`` /
     ``pc_hal_classi_cpp()``.
@@ -280,8 +301,7 @@ def pcghal_classification(Y: np.ndarray, Xtilde: np.ndarray, ENn: np.ndarray,
     res = hapc_core.pcghal_classi_call(_C(Y), _C(Xtilde), _C(ENn), _C(alpha0),
                                        int(max_iter), float(tol),
                                        float(step_factor), bool(verbose))
-    return OptimizerOutput(res.alpha, res.alphaiters, res.beta,
-                           res.risk, res.iter)
+    return _optimizer_output(res)
 
 
 def pc_hal_classi(Y: np.ndarray, Xtilde: np.ndarray, ENn: np.ndarray,

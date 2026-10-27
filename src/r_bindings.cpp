@@ -121,6 +121,24 @@ extern "C" SEXP kernel_cross_call(SEXP Xtr_, SEXP Xte_, SEXP m_, SEXP center_) {
     return out;
 }
 
+void attach_sv_diagnostics(SEXP out, const OptimizerOutput& result) {
+    auto scalar=[&](const char* name,SEXP value) {
+        PROTECT(value);Rf_setAttrib(out,Rf_install(name),value);UNPROTECT(1);
+    };
+    scalar("sv_status",Rf_mkString(result.status.c_str()));
+    scalar("sv_constraint",Rf_mkString(result.constraint.c_str()));
+    scalar("sv_radius",Rf_ScalarReal(result.sv_radius));
+    scalar("sv_risk",Rf_ScalarReal(result.risk));
+    scalar("sv_iterations",Rf_ScalarInteger(result.iter));
+    scalar("sv_tangent_norm",Rf_ScalarReal(result.tangent_norm));
+    scalar("sv_converged",Rf_ScalarLogical(result.converged));
+    scalar("sv_optimality_gap",Rf_ScalarReal(result.optimality_gap));
+    scalar("sv_dual_bound",Rf_ScalarReal(result.dual_bound));
+    scalar("sv_dual_residual",Rf_ScalarReal(result.dual_residual));
+    scalar("sv_primal_residual",Rf_ScalarReal(result.primal_residual));
+    scalar("sv_constraint_violation",Rf_ScalarReal(result.constraint_violation));
+}
+
 // Wrapper: pcghal_call
 extern "C" SEXP pcghal_call(SEXP Y_, SEXP Xtilde_, SEXP ENn_, SEXP alpha0_,
                             SEXP max_iter_, SEXP tol_, SEXP step_factor_, 
@@ -164,6 +182,7 @@ extern "C" SEXP pcghal_call(SEXP Y_, SEXP Xtilde_, SEXP ENn_, SEXP alpha0_,
     SET_STRING_ELT(names, 3, Rf_mkChar("risk"));
     SET_STRING_ELT(names, 4, Rf_mkChar("iter"));
     Rf_setAttrib(out, R_NamesSymbol, names);
+    attach_sv_diagnostics(out, res);
     
     UNPROTECT(7);
     return out;
@@ -211,6 +230,7 @@ extern "C" SEXP pcghal_classi_call(SEXP Y_, SEXP Xtilde_, SEXP ENn_, SEXP alpha0
     SET_STRING_ELT(names, 3, Rf_mkChar("risk"));
     SET_STRING_ELT(names, 4, Rf_mkChar("iter"));
     Rf_setAttrib(out, R_NamesSymbol, names);
+    attach_sv_diagnostics(out, res);
     
     UNPROTECT(7);
     return out;
@@ -331,6 +351,7 @@ extern "C" SEXP single_pcghal_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
     SET_STRING_ELT(names, 2, Rf_mkChar("beta"));
     SET_STRING_ELT(names, 3, Rf_mkChar("predictions"));
     Rf_setAttrib(out, R_NamesSymbol, names);
+    attach_sv_diagnostics(out, res_opt);
 
     UNPROTECT(prot);
     return out;

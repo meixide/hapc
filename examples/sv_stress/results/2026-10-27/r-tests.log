@@ -1,0 +1,3 @@
+Loaded hapc
+R SV checks passed: native gaussian/logistic, public gaussian paths, predictions, diagnostics
+R public SV validation and binomial checks passed

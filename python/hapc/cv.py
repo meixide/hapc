@@ -17,7 +17,7 @@ from typing import NamedTuple, Optional
 import numpy as np
 
 from . import hapc_core
-from .core import _C, cross_kernel_hapc, design_hapc
+from .core import _C, cross_kernel_hapc, design_hapc, _optimizer_output, OptimizerOutput
 from .single import (
     _check_binomial_labels,
     _check_intercept,
@@ -60,6 +60,10 @@ class CVResult(NamedTuple):
     n_extend: Optional[int] = None
     lambda_max: Optional[float] = None
     intercept: Optional[float] = None
+    optimizer_output: Optional[OptimizerOutput] = None
+    sv_fold_status: Optional[list] = None
+    sv_fold_gap: Optional[np.ndarray] = None
+    sv_fold_radius: Optional[np.ndarray] = None
 
 
 def _grid(lambdas: Optional[np.ndarray], log_lambda_min: float,
@@ -70,7 +74,7 @@ def _grid(lambdas: Optional[np.ndarray], log_lambda_min: float,
 
 
 # ---------------------------------------------------------------------------
-# norm="sv" (gaussian)  →  C++ pcghal_cv_fit (init + PGD per fold)
+# norm="sv" (gaussian)  →  C++ pcghal_cv_fit (init + SV ball per fold)
 # ---------------------------------------------------------------------------
 
 def pcghal_cv(X: np.ndarray, Y: np.ndarray,
@@ -90,7 +94,7 @@ def pcghal_cv(X: np.ndarray, Y: np.ndarray,
     """k-fold CV for gaussian HAPC with ``norm="sv"``.
 
     Per fold: initialise α with LASSO (``ini="1"``, default) or ridge
-    (``ini="2"``), then projected gradient descent on squared error — same
+    (``ini="2"``), then SV-ball optimisation on squared error — same
     pipeline as R ``cv.hapc(family="gaussian", norm="sv")``.
 
     Delegates to C++ ``pcghal_cv_fit`` (shared with R), including fold IDs.
@@ -118,11 +122,11 @@ def pcghal_cv(X: np.ndarray, Y: np.ndarray,
     center, approx : bool
         Passed through to design / kernel (``approx`` reserved).
     verbose : bool
-        Print PGD progress.
+        Print SV solver progress.
     max_iter, tol, step_factor : float / int
-        PGD budget and step-size factor.
+        SV iteration budget, dual-gap tolerance, and legacy step factor.
     crit : {"grad", "risk"}, default "grad"
-        PGD stopping rule (matches R default).
+        Legacy selector; both values use the primal-dual gap.
     ini : {"1", "2"}, default "1"
         ``"1"`` = LASSO initialisation, ``"2"`` = ridge.
 
@@ -167,6 +171,10 @@ def pcghal_cv(X: np.ndarray, Y: np.ndarray,
         best_lambda=float(res.best_lambda),
         best_model_alpha=np.asarray(res.best_alpha),
         predictions=predictions,
+        optimizer_output=_optimizer_output(res.optimizer_output),
+        sv_fold_status=list(res.sv_fold_status),
+        sv_fold_gap=np.asarray(res.sv_fold_gap),
+        sv_fold_radius=np.asarray(res.sv_fold_radius),
     )
 
 
@@ -323,6 +331,10 @@ def pcghal_cv_classi(X: np.ndarray, Y: np.ndarray,
         best_lambda=float(res.best_lambda),
         best_model_alpha=np.asarray(res.best_alpha),
         predictions=predictions,
+        optimizer_output=_optimizer_output(res.optimizer_output) if with_pgd else None,
+        sv_fold_status=list(res.sv_fold_status) if with_pgd else None,
+        sv_fold_gap=np.asarray(res.sv_fold_gap) if with_pgd else None,
+        sv_fold_radius=np.asarray(res.sv_fold_radius) if with_pgd else None,
     )
 
 
@@ -522,7 +534,7 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
         Response.
     family : {"gaussian", "binomial", "logit-hazard"}, default "gaussian"
         Loss family. For ``"binomial"`` the loss is **always logistic** (deviance
-        CV, not MSE). ``norm="sv"`` runs logistic ridge + PGD per fold;
+        CV, not MSE). ``norm="sv"`` runs logistic ridge + SV-ball optimisation per fold;
         ``norm="2"`` runs logistic ridge only; ``norm="1"`` runs logistic
         LASSO with an unpenalised intercept by glmnet's algorithm (mirrors R
         ``glmnet`` for the binomial+norm="1" path). Every binomial fit has an
@@ -563,7 +575,7 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
     predict : np.ndarray, optional
         Test features.
     max_iter, tol, step_factor, crit : optional
-        PGD parameters used when ``norm="sv"``.
+        SV solver controls used when ``norm="sv"``.
     center, approx, verbose, ini : optional
         See :func:`hapc.single.hapc`.
 

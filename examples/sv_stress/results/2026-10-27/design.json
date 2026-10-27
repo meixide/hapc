@@ -1,0 +1,20 @@
+{
+  "seed": "20261027+n",
+  "n": [
+    32,
+    64,
+    128,
+    256
+  ],
+  "C": 1,
+  "knots": "adjacent grid midpoints, distinct univariate indicator atoms",
+  "k": 12,
+  "tuning": "bisection over native penalty paths to own-norm radius C; SV radius from ridge",
+  "sv_constraint": "equality on coefficient variation; intercept excluded",
+  "caveats": [
+    "synthetic geometry demonstration, not CV",
+    "equal numeric radii are different classes",
+    "multiplicative solver can stall or lock zero PC coordinates",
+    "full anchored variation is reported separately"
+  ]
+}

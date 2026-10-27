@@ -1,0 +1,74 @@
+[build-system]
+requires = ["setuptools>=65", "wheel", "cmake>=3.18", "pybind11>=2.6"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hapc"
+version = "2.7.1"
+description = "Highly Adaptive Principal Components"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    {name = "Carlos García Meixide", email = "cgmeixide@gmail.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy>=1.24,<2.3",
+    # scipy: normal quantiles in ate_hapc. scikit-learn is no longer needed
+    # (norm="1" uses its own glmnet-style solver since 2.7.0); dropping it also
+    # avoids scikit-learn >= 1.9, which has no manylinux2014 wheels.
+    "scipy>=1.9",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-cov", "black", "flake8"]
+docs = ["sphinx>=7", "furo", "myst-parser"]
+
+[project.urls]
+Homepage = "https://github.com/meixide/hapc"
+Documentation = "https://hapc.readthedocs.io"
+Repository = "https://github.com/meixide/hapc.git"
+Issues = "https://github.com/meixide/hapc/issues"
+
+[tool.cibuildwheel]
+# Build CPython 3.8–3.12 only; skip PyPy and musl (HPC/desktop targets are glibc).
+build = "cp38-* cp39-* cp310-* cp311-* cp312-*"
+skip = ["pp*", "*-musllinux*"]
+build-verbosity = 1
+# Smoke-test every wheel: install it (pulling numpy/scipy) and import the
+# compiled extension. Catches wrong-ABI / unresolved-symbol wheels before publish.
+test-command = "python -c \"import hapc; print(hapc.__version__)\""
+# NOTE: the latest scipy no longer ships a
+# manylinux2014 wheel, so the in-container smoke test would try to compile it
+# from source and fail. We force scipy to resolve from a binary wheel via
+# PIP_ONLY_BINARY=scipy, set in the workflow and passed into the Linux container
+# (see .github/workflows/build-and-publish.yml). It must apply to the wheel
+# install itself, which is why it lives in the env rather than test-requires.
+
+[tool.cibuildwheel.linux]
+archs = ["x86_64"]
+# manylinux2014 -> glibc 2.17 baseline + bundled libstdc++ via auditwheel, so the
+# wheel installs and runs unmodified on any HPC cluster (glibc >= 2.17), no
+# compiler / conda toolchain / sysroot required.
+manylinux-x86_64-image = "manylinux2014"
+
+[tool.cibuildwheel.macos]
+# Build fat universal2 wheels (x86_64 + arm64) from a single runner. CMake does
+# not honour the interpreter's arch flags, so the arch is forced explicitly via
+# CMAKE_ARGS below (setup.py appends $CMAKE_ARGS to the cmake invocation).
+# delocate then verifies both slices are present, which is what caught the old
+# single-arch-but-universal2-tagged wheels.
+archs = ["universal2"]
+environment = { CMAKE_ARGS = "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" }
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]
