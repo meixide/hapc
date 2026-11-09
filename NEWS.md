@@ -1,5 +1,7 @@
 # Development version
 
+- New exported `cv.hapc.treat()` (R only): binomial HAPC with treatment columns outside the HAL kernel and unpenalised (`penalty_factor = 0`, with automatic retries under separation), optional unpenalised standardised linear covariates, the `cv.hapc` folds and edge-extended lambda grid up to `lambda_max`. It is the engine of `learner_hapc_trat` in the `tmle2t` package, which previously reached into hapc internals; on the same inputs it returns bit-identical predictions. Tests: `tests/r/test_cv_hapc_treat.R` (without A it reproduces `cv.hapc(norm = "1")`). R package version 2.7.1.9000.
+
 - `norm="sv"` now fits the convex coefficient-SV ball `||V alpha||1 <= C`, with C still determined by the initial fit at lambda. Interior optima and activation of zero PC coefficients are allowed. This replaces the multiplicative equality-constrained fit and may change results.
 - A numerical primal-dual gap controls convergence. Single and CV outputs expose optimisation diagnostics; iteration-limited outputs remain explicitly uncertified. `tol` is a scaled gap tolerance. `crit` and `step_factor` remain accepted for call compatibility; both crit values use the gap and step_factor is ignored by the ball solver.
 - The previous boundary algorithm remains available through explicit native Python comparator functions. Its empirical results are kept separately.
