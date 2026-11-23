@@ -4,5 +4,6 @@ PKG_LIBS = -pthread
 SOURCES = r_bindings.cpp pchal_design.cpp ridge_wrappers.cpp mkernel.cpp \
           cross_kernel.cpp pcghal_call.cpp pcghal_classi_call.cpp \
           fast_pchal.cpp single_pchar.cpp cv_fast_pchal.cpp pcghal_cv.cpp \
-          cv_classi.cpp pcghal_cv_classi_cpp.cpp
+          cv_classi.cpp pcghal_cv_classi_cpp.cpp \
+          cv_inductive.cpp cv_inductive_r.cpp
 OBJECTS = $(SOURCES:.cpp=.o)

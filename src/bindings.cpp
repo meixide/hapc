@@ -130,6 +130,32 @@ PYBIND11_MODULE(hapc_core, m) {
           py::arg("center") = true, py::arg("approx") = false,
           py::arg("l1") = true);
 
+    // Gaussian norm "1"/"2" CV with an inductive basis per training part,
+    // data-scaled grid (empty `lambdas`) and refit / fold_average / holdout
+    // selection. Same C++ routine as R's fasthal_cv_general_call.
+    py::class_<GeneralCVOutput>(m, "GeneralCVOutput")
+        .def_readonly("mses", &GeneralCVOutput::mses)
+        .def_readonly("lambdas", &GeneralCVOutput::lambdas)
+        .def_readonly("best_lambda", &GeneralCVOutput::best_lambda)
+        .def_readonly("best_index", &GeneralCVOutput::best_index)
+        .def_readonly("fold_mses", &GeneralCVOutput::fold_mses)
+        .def_readonly("cv_predictions", &GeneralCVOutput::cv_predictions)
+        .def_readonly("foldid", &GeneralCVOutput::foldid)
+        .def_readonly("fold_alphas", &GeneralCVOutput::fold_alphas)
+        .def_readonly("fold_intercepts", &GeneralCVOutput::fold_intercepts)
+        .def_readonly("fold_ranks", &GeneralCVOutput::fold_ranks)
+        .def_readonly("best_alpha", &GeneralCVOutput::best_alpha)
+        .def_readonly("intercept", &GeneralCVOutput::intercept)
+        .def_readonly("rank", &GeneralCVOutput::rank)
+        .def_readonly("predictions", &GeneralCVOutput::predictions)
+        .def_readonly("grid", &GeneralCVOutput::grid);
+    m.def("fasthal_cv_general_fit", &fasthal_cv_general,
+          py::arg("X"), py::arg("Y"), py::arg("npc"), py::arg("lambdas"),
+          py::arg("nlambda"), py::arg("nfolds"), py::arg("predict"),
+          py::arg("maxdeg"), py::arg("center") = true, py::arg("l1") = true,
+          py::arg("inductive") = true, py::arg("selection") = "refit",
+          py::arg("train_frac") = 0.8, py::arg("clip") = false);
+
     // Pure-C++ k-fold logistic CV (binomial + sv).  Mirrors R's
     // pchal_cv_classi_call: same logistic-ridge initialiser, same PGD step
     // selection and same fold partitioning (mt19937(12345)).

@@ -110,6 +110,36 @@ FastCVOutput fasthal_cv_python(const MatrixXd& X, const VectorXd& Y, int npc,
                                 const MatrixXd& predict, int maxdeg,
                                 bool center, bool approx, bool l1);
 
+// Gaussian norm "1"/"2" CV with an optional inductive basis per training part
+// (src/cv_inductive.cpp). An empty `lambdas` asks for the data-scaled grid
+// with `nlambda` points. selection: "refit" (full-sample refit at the selected
+// lambda), "fold_average" (average of the V fold fits) or "holdout" (single
+// split, fit on the training part).
+struct GeneralCVOutput {
+    std::vector<double> mses;
+    std::vector<double> lambdas;
+    double best_lambda;
+    int best_index;                    // 0-based
+    MatrixXd fold_mses;                // parts x L
+    MatrixXd cv_predictions;           // n x L held-out predictions (NaN elsewhere)
+    std::vector<int> foldid;           // V-fold: 1..V; hold-out: 0 train, 1 validation
+    std::vector<MatrixXd> fold_alphas; // per part, r_k x L
+    std::vector<double> fold_intercepts;
+    std::vector<int> fold_ranks;
+    VectorXd best_alpha;               // empty for fold_average
+    double intercept;                  // NaN for fold_average
+    int rank;                          // PCs of the returned basis (0 for fold_average)
+    VectorXd predictions;
+    std::string grid;                  // "user" or "scaled"
+};
+
+GeneralCVOutput fasthal_cv_general(const MatrixXd& X, const VectorXd& Y, int npc,
+                                   const std::vector<double>& lambdas, int nlambda,
+                                   int nfolds, const MatrixXd& predict, int maxdeg,
+                                   bool center, bool l1, bool inductive,
+                                   const std::string& selection, double train_frac,
+                                   bool clip);
+
 // Pure C++ Newton-Raphson logistic ridge with an unpenalised intercept
 // (only the slopes are returned). Y must contain values in {-1, +1}.
 // Objective as glmnet(alpha = 0, standardize = FALSE):

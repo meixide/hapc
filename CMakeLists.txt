@@ -63,6 +63,7 @@ set(HAPC_CORE_SOURCES
     src/pcghal_classi_call.cpp
     src/fast_pchal.cpp
     src/cv_fast_pchal_python.cpp
+    src/cv_inductive.cpp
     src/single_pcghal_cpp.cpp
     src/pcghal_cv_cpp.cpp
     src/pcghal_cv_classi_cpp.cpp
