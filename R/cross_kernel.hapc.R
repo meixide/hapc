@@ -10,7 +10,7 @@
 #' @param Xte Numeric matrix of test features. Must have the same number of
 #'   columns as \code{X}.
 #' @param max_degree Integer; maximum interaction order (must match the value
-#'   used to fit). Default \code{1L}.
+#'   used to fit). Default \code{2L}.
 #' @param center Logical; whether to apply the same column centring used in
 #'   training. Default \code{TRUE}.
 #'
@@ -24,7 +24,7 @@
 #' }
 #'
 #' @export
-cross_kernel.hapc <- function(X, Xte, max_degree = 1L, center = TRUE) {
+cross_kernel.hapc <- function(X, Xte, max_degree = 2L, center = TRUE) {
   .Call("kernel_cross_call", X, Xte, as.integer(max_degree),
         as.logical(center), PACKAGE = "hapc")
 }

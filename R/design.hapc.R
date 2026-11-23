@@ -9,7 +9,7 @@
 #'
 #' @param X Numeric matrix of features (\code{nrow} = observations,
 #'   \code{ncol} = covariates).
-#' @param max_degree Integer; maximum HAL interaction order. Default \code{1L}.
+#' @param max_degree Integer; maximum HAL interaction order. Default \code{2L}.
 #' @param npcs Integer; number of singular triplets to retain. Default
 #'   \code{nrow(X)} (internally capped when \code{center = TRUE}).
 #' @param center Logical; centre \code{H} before the SVD. Default \code{TRUE}.
@@ -35,6 +35,6 @@
 #' }
 #'
 #' @export
-design.hapc <- function(X, max_degree = 1, npcs = nrow(X), center=TRUE) {
+design.hapc <- function(X, max_degree = 2, npcs = nrow(X), center=TRUE) {
   .Call("pchal_des", X, as.integer(max_degree), as.integer(npcs), as.logical(center), PACKAGE = "hapc")
 }

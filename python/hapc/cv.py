@@ -201,11 +201,11 @@ def fasthal_cv(X: np.ndarray, Y: np.ndarray,
                npcs: int, lambdas: Optional[np.ndarray],
                nfolds: int = 5,
                predict: Optional[np.ndarray] = None,
-               max_degree: int = 1,
+               max_degree: int = 2,
                center: bool = True,
                approx: bool = False,
                l1: bool = True,
-               inductive: bool = False,
+               inductive: Optional[bool] = None,
                selection: str = "refit",
                train_frac: float = 0.8,
                clip: bool = False,
@@ -234,7 +234,7 @@ def fasthal_cv(X: np.ndarray, Y: np.ndarray,
         Number of CV folds.
     predict : np.ndarray, optional, shape (m, p)
         Test features for out-of-sample predictions at the CV-winning λ.
-    max_degree : int, default 1
+    max_degree : int, default 2
         HAL interaction order.
     center : bool, default True
         Centre kernel / response like training.
@@ -268,6 +268,8 @@ def fasthal_cv(X: np.ndarray, Y: np.ndarray,
     if selection not in {"refit", "fold_average", "holdout"}:
         raise ValueError("selection must be 'refit', 'fold_average' or 'holdout'; "
                          f"got '{selection}'")
+    if inductive is None:
+        inductive = not approx
     if inductive or lambdas is None or selection != "refit" or clip:
         if approx:
             raise ValueError(
@@ -338,7 +340,7 @@ def pcghal_cv_classi(X: np.ndarray, Y: np.ndarray,
                      max_iter: int = 5000, tol: float = 1e-3,
                      step_factor: float = 0.8,
                      with_pgd: bool = True,
-                     inductive: bool = False) -> CVResult:
+                     inductive: bool = True) -> CVResult:
     """k-fold logistic-loss CV for binomial HAPC.
 
     Calls the shared C++ logistic CV used by R's ``cv.hapc(family="binomial")``.
@@ -353,7 +355,7 @@ def pcghal_cv_classi(X: np.ndarray, Y: np.ndarray,
         ``True`` → ``norm="sv"`` (logistic ridge initialiser + projected
         gradient descent on logistic loss, per fold). ``False`` → ``norm="2"``
         (logistic ridge only, no PGD), still scored with logistic deviance.
-    inductive : bool, default False
+    inductive : bool, default True
         Build the design (knots, centring, PCs) of every training fold from its
         own rows and score held-out rows through the cross-kernel. ``False``
         keeps the original full-sample design.
@@ -570,10 +572,10 @@ def pcghal_cv_classi_lasso(X: np.ndarray, Y: np.ndarray,
 
 def cv_hapc(X: np.ndarray, Y: np.ndarray,
             family: str = "gaussian",
-            max_degree: int = 1,
+            max_degree: int = 2,
             npcs: Optional[int] = None,
-            log_lambda_min: float = -5,
-            log_lambda_max: float = -3,
+            log_lambda_min: Optional[float] = None,
+            log_lambda_max: Optional[float] = None,
             grid_length: Optional[int] = None,
             nfolds: int = 5,
             norm: str = "sv",
@@ -590,9 +592,9 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
             time_grid: Optional[np.ndarray] = None,
             intercept: Optional[bool] = None,
             extend_grid: int = 0,
-            inductive: bool = False,
+            inductive: Optional[bool] = None,
             lambdas: Optional[np.ndarray] = None,
-            lambda_grid: str = "fixed",
+            lambda_grid: Optional[str] = None,
             selection: str = "refit",
             train_frac: float = 0.8,
             clip: bool = False) -> CVResult:
@@ -632,40 +634,46 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
         edge of the grid, extend the grid on that side (same log spacing,
         another ``grid_length`` points) up to ``extend_grid`` times; upwards
         never past ``lambda_max`` (the intercept-only fit). Mirrors R.
-    max_degree : int, default 1
-        Maximum interaction order. The default 1 (same as R ``cv.hapc``)
-        keeps main effects only, i.e. an additive model when ``p >= 2``. The
-        full HAL dictionary analysed by the PC-HAR/PC-HAL theory is
-        ``max_degree = p``.
+    max_degree : int, default 2
+        Maximum interaction order. The default 2 (same as R ``cv.hapc``)
+        gives main effects and two-way interactions; 1 is an additive model.
+        The full HAL dictionary analysed by the PC-HAR/PC-HAL theory is
+        ``max_degree = p``; values above ``p`` act as ``p``.
     npcs : int, optional
         Number of PCs. Defaults to ``n``.
     log_lambda_min, log_lambda_max : float
         Bounds of the log-λ grid (defaults ``-5``, ``-3``), used with
-        ``lambda_grid="fixed"`` and ``lambdas=None``.
+        ``lambda_grid="fixed"`` and ``lambdas=None``. Giving either one
+        without ``lambda_grid`` selects the fixed grid.
     grid_length : int, optional
         Number of grid points: 10 for ``lambda_grid="fixed"``, 40 for
         ``"scaled"`` when not given.
     nfolds : int, default 5
         Number of CV folds. Identical fold partitions to R. Ignored with
         ``selection="holdout"``.
-    inductive : bool, default False
-        If ``True``, the HAL kernel, its centring and its PCs are built from
-        the training rows of each fold only, and held-out rows are scored
-        through the cross-kernel with the training knots and centring; the
-        fold fits are then the exact penalised least-squares minimisers on the
-        training fold. ``False`` (original behaviour) uses one basis built from
-        all rows, so held-out covariates enter the basis and the closed-form
-        fold fits are not the exact training-fold minimisers. Implemented for
-        gaussian ``norm`` in ``{"1","2"}`` and binomial ``norm`` in
-        ``{"sv","2"}``; binomial ``norm="1"`` is always inductive; not yet
-        available for gaussian ``norm="sv"``.
+    inductive : bool, optional
+        ``True`` (default where implemented): the HAL kernel, its centring
+        and its PCs are built from the training rows of each fold only, and
+        held-out rows are scored through the cross-kernel with the training
+        knots and centring; the fold fits are then the exact penalised
+        least-squares minimisers on the training fold. ``False`` (original
+        behaviour) uses one basis built from all rows, so held-out covariates
+        enter the basis and the closed-form fold fits are not the exact
+        training-fold minimisers. Implemented for gaussian ``norm`` in
+        ``{"1","2"}`` and binomial ``norm`` in ``{"sv","2"}``; binomial
+        ``norm="1"`` is always inductive. When not given, gaussian
+        ``norm="sv"``, ``approx=True`` and ``family="logit-hazard"`` keep the
+        original CV; an explicit ``True`` there raises.
     lambdas : np.ndarray, optional
         Explicit λ grid; takes precedence over ``log_lambda_*`` and
         ``grid_length``. Cannot be combined with ``lambda_grid="scaled"``.
-    lambda_grid : {"fixed", "scaled"}, default "fixed"
+    lambda_grid : {"scaled", "fixed"}, optional
         ``"fixed"``: ``exp(linspace(log_lambda_min, log_lambda_max,
-        grid_length))``, the same for every n. ``"scaled"`` (gaussian
-        ``norm`` in ``{"1","2"}``): ``grid_length`` log-spaced values scaled to
+        grid_length))``, the same for every n. When not given: ``"scaled"``
+        for gaussian ``norm`` in ``{"1","2"}``, unless ``lambdas``,
+        ``log_lambda_min``/``log_lambda_max`` or ``approx=True`` is given;
+        ``"fixed"`` otherwise. ``"scaled"`` (gaussian ``norm`` in
+        ``{"1","2"}`` only): ``grid_length`` log-spaced values scaled to
         the data, ``(s_1^2/n) * 10**[-9, 1]`` for ``norm="2"`` and
         ``[1e-5, 1] * lambda_max`` with ``lambda_max = max_j s_j |u_j' y_c| / n``
         for ``norm="1"``, computed on the basis that is fitted (largest value
@@ -711,6 +719,22 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
     True
     """
     _check_intercept(intercept, family, center)
+    # Defaults inductive=True and lambda_grid="scaled" apply where they are
+    # implemented; when the argument is not given, other paths keep the
+    # original behaviour. Explicit values that are not implemented raise below.
+    euclid = family == "gaussian" and norm in {"1", "2"}
+    if inductive is None:
+        inductive = ((euclid and not approx)
+                     or (family == "binomial" and norm in {"sv", "2"}))
+    if lambda_grid is None:
+        lambda_grid = ("scaled" if (euclid and not approx and lambdas is None
+                                    and log_lambda_min is None
+                                    and log_lambda_max is None)
+                       else "fixed")
+    if log_lambda_min is None:
+        log_lambda_min = -5
+    if log_lambda_max is None:
+        log_lambda_max = -3
     # family = "logit-hazard": discrete-time logistic hazard. The second
     # positional argument Y carries the observed times T = min(T^event, C); the
     # event indicator Delta must be supplied. norm = "sv" is flagged inside
@@ -749,7 +773,6 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
         raise ValueError("give either 'lambdas' or lambda_grid='scaled', not both.")
     if grid_length is None:
         grid_length = 40 if lambda_grid == "scaled" else 10
-    euclid = family == "gaussian" and norm in {"1", "2"}
     if not euclid and (lambda_grid == "scaled" or selection != "refit" or clip):
         raise ValueError("lambda_grid='scaled', selection and clip are implemented for "
                          "family='gaussian' with norm='1' or '2' only.")

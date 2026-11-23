@@ -9,7 +9,7 @@ hazard.hapc(
   T,
   Delta,
   norm = "1",
-  max_degree = 1L,
+  max_degree = 2L,
   npcs = NULL,
   time_grid = NULL,
   log_lambda_min = -4,
@@ -41,7 +41,7 @@ discrete (interval indices).}
 \strong{not implemented} for this family and raises an error.}
 
 \item{max_degree}{Integer; HAL interaction order over \code{[time, X]}.
-Default \code{1L}.}
+Default \code{2L}.}
 
 \item{npcs}{Integer; number of principal components.  Default \code{NULL} =
 the number of person-period rows (capped internally as in

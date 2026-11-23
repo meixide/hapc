@@ -4,7 +4,7 @@
 \alias{cross_kernel.hapc}
 \title{Cross kernel matrix between train and test points}
 \usage{
-cross_kernel.hapc(X, Xte, max_degree = 1L, center = TRUE)
+cross_kernel.hapc(X, Xte, max_degree = 2L, center = TRUE)
 }
 \arguments{
 \item{X}{Numeric matrix of training features (used to define the basis).}
@@ -13,7 +13,7 @@ cross_kernel.hapc(X, Xte, max_degree = 1L, center = TRUE)
 columns as \code{X}.}
 
 \item{max_degree}{Integer; maximum interaction order (must match the value
-used to fit). Default \code{1L}.}
+used to fit). Default \code{2L}.}
 
 \item{center}{Logical; whether to apply the same column centring used in
 training. Default \code{TRUE}.}

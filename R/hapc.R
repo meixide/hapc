@@ -20,7 +20,7 @@
 #' @param family Character: \code{"gaussian"} (squared error, default) or
 #'   \code{"binomial"} (logistic loss).
 #' @param max_degree Integer; maximum interaction order for the HAL basis.
-#'   Default \code{1L} (additive HAL).
+#'   Default \code{2L} (main effects and two-way interactions; \code{1L} is additive).
 #' @param npcs Integer; number of principal components to keep. Default
 #'   \code{nrow(X)}.
 #' @param lambda Numeric scalar; regularisation parameter. Default
@@ -110,7 +110,7 @@
 #' @export
 hapc <- function(X, Y,
                  family = c("gaussian", "binomial", "logit-hazard"),
-                 max_degree = 1L,
+                 max_degree = 2L,
                  npcs = nrow(X),
                  lambda = 0.01,
                  norm = c("sv", "1", "2"),

@@ -9,7 +9,7 @@
 #' Counterpart to Python \code{hapc.kernel_hapc()}.
 #'
 #' @param X Numeric matrix of features.
-#' @param max_degree Integer; maximum interaction order. Default \code{1L}.
+#' @param max_degree Integer; maximum interaction order. Default \code{2L}.
 #' @param center Logical; whether to centre \eqn{H} (i.e. subtract column
 #'   means before \eqn{HH^\top}). Default \code{TRUE}.
 #'
@@ -22,7 +22,7 @@
 #' }
 #'
 #' @export
-kernel.hapc <- function(X, max_degree = 1L, center = TRUE) {
+kernel.hapc <- function(X, max_degree = 2L, center = TRUE) {
   .Call("mkernel_call", X, as.integer(max_degree), as.logical(center),
         PACKAGE = "hapc")
 }

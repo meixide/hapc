@@ -119,7 +119,7 @@ def _person_period(X: np.ndarray, T: np.ndarray, Delta: np.ndarray,
 
 def hazard_hapc(X: np.ndarray, T: np.ndarray, Delta: np.ndarray,
                 norm: str = "1",
-                max_degree: int = 1,
+                max_degree: int = 2,
                 npcs: Optional[int] = None,
                 time_grid: Optional[np.ndarray] = None,
                 log_lambda_min: float = -4,
@@ -152,7 +152,7 @@ def hazard_hapc(X: np.ndarray, T: np.ndarray, Delta: np.ndarray,
     norm : {"1", "2"}, default "1"
         ``"1"`` = logistic LASSO, ``"2"`` = logistic ridge. ``"sv"`` raises
         ``NotImplementedError``.
-    max_degree : int, default 1
+    max_degree : int, default 2
         HAL interaction order over ``[time, X]``.
     npcs : int, optional
         Number of principal components. Defaults to the number of person-period

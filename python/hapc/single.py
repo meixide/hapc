@@ -725,7 +725,7 @@ def single_pcghal_classification_lasso(
 
 def hapc(X: np.ndarray, Y: np.ndarray,
          family: str = "gaussian",
-         max_degree: int = 1,
+         max_degree: int = 2,
          npcs: Optional[int] = None,
          lambda_: float = 0.01,
          norm: str = "sv",
@@ -752,7 +752,7 @@ def hapc(X: np.ndarray, Y: np.ndarray,
         ``{"1","2"}``; ``norm="sv"`` requires hard labels.
     family : {"gaussian", "binomial"}, default "gaussian"
         Loss family.
-    max_degree : int, default 1
+    max_degree : int, default 2
         Maximum interaction order for the HAL basis.
     npcs : int, optional
         Number of principal components. Defaults to ``n``.

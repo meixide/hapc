@@ -139,11 +139,22 @@ def test_inductive_false_reproduces_original_cv(l1):
     np.testing.assert_allclose(new.mses, old.mses, rtol=1e-12, atol=1e-14)
     np.testing.assert_allclose(new.best_alpha, old.best_alpha, rtol=1e-12, atol=1e-14)
     np.testing.assert_allclose(new.predictions, old.predictions, rtol=1e-12, atol=1e-14)
-    # the default cv_hapc call still takes the original route
+    # inductive=False takes the original route
     cv = cv_hapc(X, Y, norm="1" if l1 else "2", max_degree=2, npcs=70, predict=Xp,
-                 lambdas=LAMS)
+                 lambdas=LAMS, inductive=False)
     np.testing.assert_array_equal(cv.mses, old.mses)
     assert cv.fold_mses is None
+    # defaults: inductive CV on the scaled 40-point grid; giving the
+    # log-lambda bounds selects the fixed grid; approx=True keeps the original
+    norm = "1" if l1 else "2"
+    d = cv_hapc(X, Y, norm=norm, npcs=70)
+    assert d.inductive and d.lambda_grid == "scaled" and d.lambdas.size == 40
+    f = cv_hapc(X, Y, norm=norm, npcs=70, log_lambda_min=-5)
+    assert f.inductive
+    np.testing.assert_allclose(f.lambdas, np.exp(np.linspace(-5, -3, 10)))
+    o = cv_hapc(X, Y, norm=norm, npcs=70, approx=True)
+    assert o.fold_mses is None
+    np.testing.assert_allclose(o.lambdas, np.exp(np.linspace(-5, -3, 10)))
 
 
 def test_scaled_grid():
@@ -254,8 +265,11 @@ def test_binomial_ridge_inductive_matches_training_only_design():
             dev[k - 1, j] = -np.mean(Y[te] * np.log(pr) + (1 - Y[te]) * np.log(1 - pr))
     np.testing.assert_allclose(r.mses, dev.mean(axis=0), rtol=1e-7)
     orig = cv_hapc(X, Y, family="binomial", norm="2", max_degree=2, npcs=npcs,
-                   lambdas=lams)
+                   lambdas=lams, inductive=False)
     assert np.max(np.abs(orig.mses - r.mses)) > 1e-6
+    d = cv_hapc(X, Y, family="binomial", norm="2", max_degree=2, npcs=npcs,
+                lambdas=lams)
+    np.testing.assert_array_equal(d.mses, r.mses)  # inductive by default
 
 
 def test_binomial_sv_inductive_runs():

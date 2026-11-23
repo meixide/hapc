@@ -351,7 +351,7 @@ def _ate_crossfit(
 
 def ate_hapc(X: np.ndarray, Y: np.ndarray, A: np.ndarray,
              alpha: float = 0.05,
-             max_degree: int = 1,
+             max_degree: int = 2,
              npcs: Optional[int] = None,
              log_lambda_prop_min: float = -5,
              log_lambda_prop_max: float = 2,

@@ -183,7 +183,7 @@ def fast_pchal(U: np.ndarray, D2: np.ndarray, Y: np.ndarray,
     return hapc_core.fast_pchal_call(_C(U), _C(D2), _C(Y), float(lambda_))
 
 
-def kernel_hapc(X: np.ndarray, max_degree: int = 1,
+def kernel_hapc(X: np.ndarray, max_degree: int = 2,
                 center: bool = True) -> np.ndarray:
     """HAL kernel matrix ``K = H Hᵀ`` (computed implicitly).
 
@@ -193,7 +193,7 @@ def kernel_hapc(X: np.ndarray, max_degree: int = 1,
     ----------
     X : np.ndarray, shape (n, p)
         Feature matrix.
-    max_degree : int, default 1
+    max_degree : int, default 2
         Maximum interaction order.
     center : bool, default True
         Whether to centre ``H``.
@@ -206,7 +206,7 @@ def kernel_hapc(X: np.ndarray, max_degree: int = 1,
     return hapc_core.mkernel_call(_C(X), int(max_degree), bool(center))
 
 
-def cross_kernel_hapc(X: np.ndarray, Xte: np.ndarray, max_degree: int = 1,
+def cross_kernel_hapc(X: np.ndarray, Xte: np.ndarray, max_degree: int = 2,
                       center: bool = True) -> np.ndarray:
     """Cross-kernel ``K = H_te H_trᵀ`` for prediction.
 
@@ -218,7 +218,7 @@ def cross_kernel_hapc(X: np.ndarray, Xte: np.ndarray, max_degree: int = 1,
         Training features (defines the basis).
     Xte : np.ndarray, shape (n_te, p)
         Test features.
-    max_degree : int, default 1
+    max_degree : int, default 2
         Maximum interaction order.
     center : bool, default True
         Whether to apply the same column centring as in training.

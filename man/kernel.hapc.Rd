@@ -4,12 +4,12 @@
 \alias{kernel.hapc}
 \title{Kernel matrix for the HAPC HAL basis}
 \usage{
-kernel.hapc(X, max_degree = 1L, center = TRUE)
+kernel.hapc(X, max_degree = 2L, center = TRUE)
 }
 \arguments{
 \item{X}{Numeric matrix of features.}
 
-\item{max_degree}{Integer; maximum interaction order. Default \code{1L}.}
+\item{max_degree}{Integer; maximum interaction order. Default \code{2L}.}
 
 \item{center}{Logical; whether to centre \eqn{H} (i.e. subtract column
 means before \eqn{HH^\top}). Default \code{TRUE}.}

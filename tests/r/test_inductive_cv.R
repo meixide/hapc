@@ -107,8 +107,8 @@ test_that("inductive fold fits are the exact training-fold minimisers", {
 
 test_that("the original fold fits are not exact (documents the defect)", {
   s <- sim(60, 1, seed = 1)
-  res <- cv.hapc(s$X, s$Y, norm = "2", npcs = 10, lambdas = LAMS,
-                 selection = "fold_average")
+  res <- cv.hapc(s$X, s$Y, norm = "2", max_degree = 1, npcs = 10, lambdas = LAMS,
+                 inductive = FALSE, selection = "fold_average")
   tr <- which(res$foldid != 1); te <- which(res$foldid == 1)
   ref <- direct_fold_prediction(s$X, s$Y, tr, s$X[te, , drop = FALSE], LAMS[1],
                                 FALSE, 10, 1)
@@ -120,16 +120,25 @@ test_that("inductive = FALSE reproduces the original CV", {
   Xp <- matrix(runif(18), 9)
   for (norm in c("1", "2")) {
     old <- cv.hapc(s$X, s$Y, norm = norm, max_degree = 2, npcs = 70, lambdas = LAMS,
-                   predict = Xp)
+                   predict = Xp, inductive = FALSE)
     expect_null(old$fold_mses)
     new <- .Call("fasthal_cv_general_call", s$X, s$Y, 70L, LAMS, 0L, 5L, Xp, 2L,
                  TRUE, norm == "1", FALSE, "refit", 0.8, FALSE, PACKAGE = "hapc")
     expect_equal(new$mses, old$mses, tolerance = 1e-12)
     expect_equal(new$res_opt, old$res_opt, tolerance = 1e-12)
     expect_equal(drop(new$predictions), drop(old$predictions), tolerance = 1e-12)
-    # default fixed grid unchanged
-    d <- cv.hapc(s$X, s$Y, norm = norm, max_degree = 2, npcs = 70)
-    expect_equal(d$lambdas, exp(seq(-5, -3, length.out = 10)))
+    # defaults: inductive CV on the scaled 40-point grid; giving the
+    # log-lambda bounds selects the fixed grid
+    d <- cv.hapc(s$X, s$Y, norm = norm, npcs = 70)
+    expect_true(d$inductive)
+    expect_identical(d$lambda_grid, "scaled")
+    expect_length(d$lambdas, 40L)
+    f <- cv.hapc(s$X, s$Y, norm = norm, npcs = 70, log_lambda_min = -5)
+    expect_true(f$inductive)
+    expect_equal(f$lambdas, exp(seq(-5, -3, length.out = 10)))
+    o <- cv.hapc(s$X, s$Y, norm = norm, npcs = 70, approx = TRUE)
+    expect_null(o$fold_mses)
+    expect_equal(o$lambdas, exp(seq(-5, -3, length.out = 10)))
   }
 })
 
@@ -205,7 +214,10 @@ test_that("binomial inductive CV runs and differs from the full-sample design", 
   a <- cv.hapc(s$X, Y, family = "binomial", norm = "2", max_degree = 2, npcs = 15,
                lambdas = c(1e-3, 1e-2), inductive = TRUE)
   b <- cv.hapc(s$X, Y, family = "binomial", norm = "2", max_degree = 2, npcs = 15,
+               lambdas = c(1e-3, 1e-2), inductive = FALSE)
+  d <- cv.hapc(s$X, Y, family = "binomial", norm = "2", max_degree = 2, npcs = 15,
                lambdas = c(1e-3, 1e-2))
+  expect_equal(d$deviances, a$deviances)  # inductive by default
   expect_true(all(is.finite(a$deviances)))
   expect_gt(max(abs(a$deviances - b$deviances)), 1e-6)
   sv <- cv.hapc(s$X, Y, family = "binomial", norm = "sv", npcs = 15,

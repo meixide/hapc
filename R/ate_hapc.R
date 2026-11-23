@@ -111,7 +111,7 @@
 #' @export
 ate.hapc <- function(X, Y, A,
                      alpha = 0.05,
-                     max_degree = 1L,
+                     max_degree = 2L,
                      npcs = nrow(X),
                      log_lambda_prop_min = -5,
                      log_lambda_prop_max = -3,

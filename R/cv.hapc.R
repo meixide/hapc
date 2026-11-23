@@ -22,13 +22,15 @@
 #'   \code{family = "logit-hazard"} (see \code{\link{hazard.hapc}}). Ignored
 #'   otherwise.
 #' @param max_degree Integer; maximum interaction order of the HAL dictionary.
-#'   The default \code{1L} (same in Python \code{cv_hapc()}) keeps main effects
-#'   only, i.e. an additive model when \code{ncol(X) >= 2}. The full HAL
+#'   Default \code{2L} (same in Python \code{cv_hapc()}): main effects and
+#'   two-way interactions. \code{1L} gives an additive model; the full HAL
 #'   dictionary analysed by the PC-HAR/PC-HAL theory is
-#'   \code{max_degree = ncol(X)}.
+#'   \code{max_degree = ncol(X)}. Values above \code{ncol(X)} act as
+#'   \code{ncol(X)}.
 #' @param log_lambda_min Numeric; lower bound of the log-lambda grid. Default
 #'   \code{-5}. Used only with \code{lambda_grid = "fixed"} and
-#'   \code{lambdas = NULL}.
+#'   \code{lambdas = NULL}; giving it (or \code{log_lambda_max}) without
+#'   \code{lambda_grid} selects the fixed grid.
 #' @param log_lambda_max Numeric; upper bound of the log-lambda grid. Default
 #'   \code{-3}. Used as \code{log_lambda_min}.
 #' @param grid_length Integer; number of grid points. Default \code{10L} for
@@ -44,25 +46,32 @@
 #'   for \code{norm \%in\% c("sv", "2")} the CV is rerun on the extended grid.
 #'   Default \code{0L} (no extension). A warning is issued if the optimum is
 #'   still on an edge after the extensions. R-only option.
-#' @param inductive Logical. If \code{TRUE}, the HAL kernel, its centring
-#'   and its PCs are built from the training rows of each fold only, and the
-#'   held-out rows are scored through the cross-kernel with the training knots
-#'   and centring. The fold fits are then the exact penalised least-squares
-#'   minimisers on the training fold. If \code{FALSE} (default, original
+#' @param inductive Logical. If \code{TRUE} (default), the HAL kernel, its
+#'   centring and its PCs are built from the training rows of each fold only,
+#'   and the held-out rows are scored through the cross-kernel with the
+#'   training knots and centring. The fold fits are then the exact penalised
+#'   least-squares minimisers on the training fold. If \code{FALSE} (original
 #'   behaviour) one basis is built from all rows of \code{X} and the fold fits
 #'   use its training rows; held-out covariates then enter the basis and the
 #'   closed-form fold fits are not the exact training-fold minimisers.
 #'   Implemented for \code{family = "gaussian"}, \code{norm \%in\% c("1","2")}
 #'   and \code{family = "binomial"}, \code{norm \%in\% c("sv","2")}; the
-#'   binomial \code{norm = "1"} path is always inductive. Not yet available
-#'   for gaussian \code{norm = "sv"}.
+#'   binomial \code{norm = "1"} path is always inductive. When the argument
+#'   is not given, gaussian \code{norm = "sv"}, \code{approx = TRUE} and
+#'   \code{family = "logit-hazard"} keep the original CV; an explicit
+#'   \code{TRUE} there is an error.
 #' @param lambdas Optional numeric vector: the lambda grid to search. Takes
 #'   precedence over \code{log_lambda_min}, \code{log_lambda_max} and
 #'   \code{grid_length}; cannot be combined with \code{lambda_grid = "scaled"}.
-#' @param lambda_grid \code{"fixed"} (default): \code{exp(seq(log_lambda_min,
-#'   log_lambda_max, length.out = grid_length))}, the same for every \eqn{n}.
-#'   \code{"scaled"} (gaussian, \code{norm \%in\% c("1","2")}): a grid scaled
-#'   to the data, \code{grid_length} log-spaced values (default 40). For
+#' @param lambda_grid \code{"scaled"} (default for gaussian,
+#'   \code{norm \%in\% c("1","2")}): a grid scaled to the data,
+#'   \code{grid_length} log-spaced values (default 40). \code{"fixed"}:
+#'   \code{exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))},
+#'   the same for every \eqn{n}. When \code{lambda_grid} is not given, the
+#'   fixed grid is used if \code{lambdas}, \code{log_lambda_min} or
+#'   \code{log_lambda_max} is given, with \code{approx = TRUE}, and for the
+#'   other families and norms (the scaled grid is implemented only for
+#'   gaussian \code{norm \%in\% c("1","2")}). For
 #'   \code{norm = "2"} (PC-HAR) it is \eqn{(s_1^2/n)\,10^{[-9,1]}}; for
 #'   \code{norm = "1"} (PC-HAL) it runs from \eqn{10^{-5}\lambda_{\max}} to
 #'   \eqn{\lambda_{\max} = \max_j s_j|u_j^\top y_c|/n} (the smallest lambda
@@ -161,7 +170,7 @@
 #' @export
 cv.hapc <- function(X, Y,
                     family = c("gaussian", "binomial", "logit-hazard"),
-                    max_degree = 1L,
+                    max_degree = 2L,
                     npcs = nrow(X),
                     log_lambda_min = -5,
                     log_lambda_max = -3,
@@ -181,16 +190,30 @@ cv.hapc <- function(X, Y,
                     time_grid = NULL,
                     intercept = NULL,
                     extend_grid = 0L,
-                    inductive = FALSE,
+                    inductive = TRUE,
                     lambdas = NULL,
-                    lambda_grid = c("fixed", "scaled"),
+                    lambda_grid = c("scaled", "fixed"),
                     selection = c("refit", "fold_average", "holdout"),
                     train_frac = 0.8,
                     clip = FALSE) {
 
   family <- match.arg(family)
-  lambda_grid <- match.arg(lambda_grid)
+  norm   <- match.arg(norm)
   selection <- match.arg(selection)
+  # Defaults inductive = TRUE and lambda_grid = "scaled" apply where they are
+  # implemented; when the argument is not given, other paths keep the
+  # original behaviour. Explicit values that are not implemented raise below.
+  euclid <- family == "gaussian" && norm %in% c("1", "2")
+  if (missing(inductive))
+    inductive <- (euclid && !isTRUE(approx)) ||
+      (family == "binomial" && norm %in% c("sv", "2"))
+  if (missing(lambda_grid)) {
+    lambda_grid <- if (euclid && !isTRUE(approx) && is.null(lambdas) &&
+                       missing(log_lambda_min) && missing(log_lambda_max))
+      "scaled" else "fixed"
+  } else {
+    lambda_grid <- match.arg(lambda_grid)
+  }
   for (nm in c("inductive", "clip")) {
     v <- get(nm)
     if (!is.logical(v) || length(v) != 1L || is.na(v))
@@ -201,7 +224,6 @@ cv.hapc <- function(X, Y,
   if (lambda_grid == "scaled" && missing(grid_length)) grid_length <- 40L
   new_cv <- inductive || lambda_grid == "scaled" || selection != "refit" || clip
   .hapc_check_intercept(intercept, family, as.logical(center))
-  norm   <- match.arg(norm)
   crit   <- match.arg(crit)
   ini    <- match.arg(ini)
 
@@ -259,7 +281,6 @@ cv.hapc <- function(X, Y,
     lambdas <- exp(seq(log_lambda_min, log_lambda_max, length.out = grid_length))
   }
 
-  euclid <- family == "gaussian" && norm %in% c("1", "2")
   if (!euclid && (lambda_grid == "scaled" || selection != "refit" || clip))
     stop("lambda_grid = \"scaled\", selection and clip are implemented for ",
          "family = 'gaussian' with norm = '1' or '2' only.", call. = FALSE)

@@ -4,13 +4,13 @@
 \alias{design.hapc}
 \title{Design matrix generation for PC-HA}
 \usage{
-design.hapc(X, max_degree = 1, npcs = nrow(X), center = TRUE)
+design.hapc(X, max_degree = 2, npcs = nrow(X), center = TRUE)
 }
 \arguments{
 \item{X}{Numeric matrix of features (\code{nrow} = observations,
 \code{ncol} = covariates).}
 
-\item{max_degree}{Integer; maximum HAL interaction order. Default \code{1L}.}
+\item{max_degree}{Integer; maximum HAL interaction order. Default \code{2L}.}
 
 \item{npcs}{Integer; number of singular triplets to retain. Default
 \code{nrow(X)} (internally capped when \code{center = TRUE}).}
