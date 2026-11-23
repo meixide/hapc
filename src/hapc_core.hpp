@@ -167,7 +167,8 @@ struct CVClassiOutput {
 // Python-friendly binomial CV (mirrors R `pchal_cv_classi_call`).
 // Y must lie in [0,1]: hard {0,1} labels or soft EM-HAL posteriors. Soft
 // labels are supported only when with_pgd == false (norm="2"); with_pgd ==
-// true (norm="sv") rejects soft labels.
+// true (norm="sv") rejects soft labels. inductive == true builds the design of
+// every training fold from its own rows (see pcghal_cv_classi_cpp.cpp).
 //
 // When `with_pgd == true` (default): per fold runs logistic-ridge initialiser
 // followed by projected gradient descent on logistic loss (norm="sv").
@@ -180,6 +181,7 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
                                         int nfolds, const MatrixXd& predict_data,
                                         int max_iter, double tol, double step_factor,
                                         bool verbose, bool center,
-                                        bool with_pgd = true);
+                                        bool with_pgd = true,
+                                        bool inductive = false);
 
 #endif

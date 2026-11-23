@@ -21,7 +21,7 @@ extern "C" SEXP pchal_cv_classi_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
                                       SEXP max_iter_, SEXP tol_, SEXP step_factor_,
                                       SEXP verbose_, SEXP /*crit_*/,
                                       SEXP predict_, SEXP center_,
-                                      SEXP with_pgd_) {
+                                      SEXP with_pgd_, SEXP inductive_) {
     if (!Rf_isReal(X_) || !Rf_isReal(Y_))
         Rf_error("X and Y must be numeric.");
 
@@ -61,10 +61,13 @@ extern "C" SEXP pchal_cv_classi_call(SEXP X_, SEXP Y_, SEXP maxdeg_, SEXP npc_,
         with_pgd = LOGICAL(with_pgd_)[0];
     }
 
+    const bool inductive = !Rf_isNull(inductive_) && Rf_isLogical(inductive_) &&
+                           LOGICAL(inductive_)[0];
+
     CVClassiOutput out = pcghal_cv_classi_python(X, Y, maxdeg, npc, lambdas, K,
                                                    predict_data,
                                                    max_iter, tol, step_factor,
-                                                   verbose, center, with_pgd);
+                                                   verbose, center, with_pgd, inductive);
 
     int prot = 0;
     SEXP deviances_out = PROTECT(Rf_allocVector(REALSXP, L)); prot++;

@@ -166,7 +166,8 @@ PYBIND11_MODULE(hapc_core, m) {
           py::arg("max_iter") = 5000, py::arg("tol") = 1e-3,
           py::arg("step_factor") = 0.8, py::arg("verbose") = false,
           py::arg("center") = true,
-          py::arg("with_pgd") = true);
+          py::arg("with_pgd") = true,
+          py::arg("inductive") = false);
 
     m.def("logistic_ridge_init", &logistic_ridge_init,
           py::arg("Y"), py::arg("X"), py::arg("lambda"));

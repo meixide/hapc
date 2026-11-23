@@ -196,7 +196,7 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
                                         int nfolds, const MatrixXd& predict_data,
                                         int max_iter, double tol, double step_factor,
                                         bool verbose, bool center,
-                                        bool with_pgd) {
+                                        bool with_pgd, bool inductive) {
     const int n = X.rows();
     const int p = X.cols();
     if (Y.size() != n) throw std::runtime_error("pcghal_cv_classi: length(Y) != nrow(X)");
@@ -292,6 +292,31 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
     // fold_error[k][j] = average deviance of fold k at lambda j
     MatrixXd fold_error = MatrixXd::Constant(nfolds, L, std::numeric_limits<double>::quiet_NaN());
 
+    // inductive = true: each training fold gets its own design (knots,
+    // centring, PCs and V from the training rows only); held-out rows are
+    // scored through the cross-kernel with the training knots and centring.
+    // inductive = false: rows of the full-sample design (original behaviour).
+    std::vector<MatrixXd> ind_Xtr(nfolds), ind_Xte(nfolds), ind_E(nfolds);
+    if (inductive) {
+        for (int k = 1; k <= nfolds; ++k) {
+            std::vector<int> tr_idx, te_idx;
+            for (int i = 0; i < n; ++i) (folds[i] == k ? te_idx : tr_idx).push_back(i);
+            if (tr_idx.size() < 2 || te_idx.empty()) continue;
+            MatrixXd Xk(tr_idx.size(), p), Xk_te(te_idx.size(), p);
+            for (size_t i = 0; i < tr_idx.size(); ++i) Xk.row(i) = X.row(tr_idx[i]);
+            for (size_t i = 0; i < te_idx.size(); ++i) Xk_te.row(i) = X.row(te_idx[i]);
+            const int ntr_k = (int)tr_idx.size();
+            int npc_k = npc;
+            if (center) { if (npc_k >= ntr_k) npc_k = ntr_k - 1; }
+            else        { if (npc_k > ntr_k)  npc_k = ntr_k; }
+            MatrixXd U_k;
+            VectorXd d_k;
+            compute_classi_design(Xk, maxdeg, npc_k, center, ind_Xtr[k - 1], ind_E[k - 1], U_k, d_k);
+            ind_Xte[k - 1] = kernel_cross_call(Xk, Xk_te, maxdeg, center) * U_k *
+                             d_k.cwiseInverse().asDiagonal();
+        }
+    }
+
     for (int j = 0; j < L; ++j) {
         const double lambda = lambdas[j];
         for (int k = 1; k <= nfolds; ++k) {
@@ -305,16 +330,23 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
             const int nte = (int)te_idx.size();
             if (ntr == 0 || nte == 0) continue;
 
-            MatrixXd Xtr(ntr, final_npc), Xte(nte, final_npc);
+            if (inductive && ind_Xtr[k - 1].size() == 0) continue;
+            const int r_k = inductive ? (int)ind_Xtr[k - 1].cols() : final_npc;
+            MatrixXd Xtr(ntr, r_k), Xte(nte, r_k);
             VectorXd Ytr01(ntr), Yte01(nte);
             for (int i = 0; i < ntr; ++i) {
-                Xtr.row(i) = Xtilde.row(tr_idx[i]);
+                if (!inductive) Xtr.row(i) = Xtilde.row(tr_idx[i]);
                 Ytr01[i] = Y01[tr_idx[i]];
             }
             for (int i = 0; i < nte; ++i) {
-                Xte.row(i) = Xtilde.row(te_idx[i]);
+                if (!inductive) Xte.row(i) = Xtilde.row(te_idx[i]);
                 Yte01[i] = Y01[te_idx[i]];
             }
+            if (inductive) {
+                Xtr = ind_Xtr[k - 1];
+                Xte = ind_Xte[k - 1];
+            }
+            const MatrixXd& E_fold = inductive ? ind_E[k - 1] : E_Nn;
 
             VectorXd alpha0 = logistic_ridge_init_y01(Ytr01, Xtr, lambda);
             VectorXd alpha_fold;
@@ -322,7 +354,7 @@ CVClassiOutput pcghal_cv_classi_python(const MatrixXd& X, const VectorXd& Y,
                 // Hard-label only path (soft labels rejected upstream).
                 VectorXd Ytr_pm1(ntr);
                 for (int i = 0; i < ntr; ++i) Ytr_pm1[i] = (Ytr01[i] > 0.5) ? 1.0 : -1.0;
-                OptimizerOutput out = pcghal_classi_call(Ytr_pm1, Xtr, E_Nn, alpha0,
+                OptimizerOutput out = pcghal_classi_call(Ytr_pm1, Xtr, E_fold, alpha0,
                                                           max_iter, tol, step_factor,
                                                           verbose);
                 alpha_fold = out.alpha;

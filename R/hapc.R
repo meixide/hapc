@@ -173,6 +173,7 @@ hapc <- function(X, Y,
         step_factor, verbose, as.character(crit),
         if (is.null(predict)) NULL else predict, center,
         TRUE,  # with_pgd: logistic ridge + PGD on logistic loss
+        FALSE, # inductive: irrelevant with nfolds = 1 (single full-data fit)
         PACKAGE = "hapc"
       )
       # C++ returns probabilities in $predictions; add the linear predictor.

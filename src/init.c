@@ -8,7 +8,7 @@ extern SEXP pchal_cv_call(SEXP, SEXP, SEXP, SEXP,
                           SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP pchal_cv_classi_call(SEXP, SEXP, SEXP, SEXP,
                                  SEXP, SEXP, SEXP, SEXP,
-                                 SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
+                                 SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP fasthal_cv_call(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
 extern SEXP fasthal_cv_general_call(SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP,
                                     SEXP, SEXP, SEXP, SEXP, SEXP, SEXP, SEXP);
@@ -33,7 +33,7 @@ extern SEXP single_lambda_pchar(SEXP, SEXP, SEXP,
 // Registration table
 static const R_CallMethodDef CallEntries[] = {
   {"pchal_cv_call", (DL_FUNC) &pchal_cv_call, 14},
-  {"pchal_cv_classi_call", (DL_FUNC) &pchal_cv_classi_call, 14},
+  {"pchal_cv_classi_call", (DL_FUNC) &pchal_cv_classi_call, 15},
   {"fasthal_cv_call", (DL_FUNC) &fasthal_cv_call, 10},
   {"fasthal_cv_general_call", (DL_FUNC) &fasthal_cv_general_call, 14},
   {"mkernel_call", (DL_FUNC) &mkernel_call, 3},
