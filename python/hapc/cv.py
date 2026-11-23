@@ -42,7 +42,9 @@ class CVResult(NamedTuple):
     best_lambda : float
         λ minimising ``mses``.
     best_model_alpha : np.ndarray, shape (k,)
-        α refit on the full training data at ``best_lambda``.
+        α refit on the full training data at ``best_lambda`` (for
+        ``selection="holdout"``: the training-part fit; empty for
+        ``selection="fold_average"``).
     predictions : np.ndarray or None
         Predictions on ``predict`` (if supplied). For ``pcghal_cv_classi`` these
         are probabilities; for ``pcghal_cv`` / ``fasthal_cv`` they match the
@@ -64,6 +66,19 @@ class CVResult(NamedTuple):
     sv_fold_status: Optional[list] = None
     sv_fold_gap: Optional[np.ndarray] = None
     sv_fold_radius: Optional[np.ndarray] = None
+    # gaussian norm in {"1","2"} with inductive / scaled grid / selection /
+    # clip (see :func:`fasthal_cv`); None elsewhere:
+    fold_mses: Optional[np.ndarray] = None       # (folds, L); one row for hold-out
+    cv_predictions: Optional[np.ndarray] = None  # (n, L) held-out predictions
+    foldid: Optional[np.ndarray] = None          # 1..V; hold-out: 0 train, 1 validation
+    fold_alphas: Optional[list] = None           # per fold, (r_k, L) in its own basis
+    fold_intercepts: Optional[np.ndarray] = None
+    fold_ranks: Optional[np.ndarray] = None
+    rank: Optional[int] = None
+    lambda_grid: Optional[str] = None            # "user" or "scaled"
+    selection: Optional[str] = None
+    inductive: Optional[bool] = None
+    clip: Optional[bool] = None
 
 
 def _grid(lambdas: Optional[np.ndarray], log_lambda_min: float,
@@ -183,13 +198,18 @@ def pcghal_cv(X: np.ndarray, Y: np.ndarray,
 # ---------------------------------------------------------------------------
 
 def fasthal_cv(X: np.ndarray, Y: np.ndarray,
-               npcs: int, lambdas: np.ndarray,
+               npcs: int, lambdas: Optional[np.ndarray],
                nfolds: int = 5,
                predict: Optional[np.ndarray] = None,
                max_degree: int = 1,
                center: bool = True,
                approx: bool = False,
-               l1: bool = True) -> CVResult:
+               l1: bool = True,
+               inductive: bool = False,
+               selection: str = "refit",
+               train_frac: float = 0.8,
+               clip: bool = False,
+               nlambda: int = 40) -> CVResult:
     """k-fold CV with closed-form LASSO or ridge in the PC basis per fold.
 
     Used for gaussian ``norm="1"`` / ``norm="2"`` and, in R, also for
@@ -207,8 +227,9 @@ def fasthal_cv(X: np.ndarray, Y: np.ndarray,
         :func:`cv_hapc`).
     npcs : int
         Number of principal components.
-    lambdas : np.ndarray, shape (L,)
-        Penalty grid (must be supplied explicitly; :func:`cv_hapc` builds it).
+    lambdas : np.ndarray, shape (L,), or None
+        Penalty grid. ``None`` gives the data-scaled grid with ``nlambda``
+        points (see ``lambda_grid`` in :func:`cv_hapc`).
     nfolds : int, default 5
         Number of CV folds.
     predict : np.ndarray, optional, shape (m, p)
@@ -221,6 +242,10 @@ def fasthal_cv(X: np.ndarray, Y: np.ndarray,
         If True, approximate top eigenvectors (same flag as R).
     l1 : bool, default True
         ``True`` for LASSO (``norm="1"``), ``False`` for ridge (``norm="2"``).
+    inductive, selection, train_frac, clip :
+        See :func:`cv_hapc`.
+    nlambda : int, default 40
+        Size of the data-scaled grid when ``lambdas`` is ``None``.
 
     Returns
     -------
@@ -233,7 +258,6 @@ def fasthal_cv(X: np.ndarray, Y: np.ndarray,
     if Y.size != n:
         raise ValueError(f"Y must have {n} elements, got {Y.size}")
 
-    lams = np.asarray(lambdas, dtype=np.float64)
     if predict is not None:
         Xte = _C(predict)
         if Xte.shape[1] != p:
@@ -241,6 +265,43 @@ def fasthal_cv(X: np.ndarray, Y: np.ndarray,
     else:
         Xte = np.empty((0, p), dtype=np.float64)
 
+    if selection not in {"refit", "fold_average", "holdout"}:
+        raise ValueError("selection must be 'refit', 'fold_average' or 'holdout'; "
+                         f"got '{selection}'")
+    if inductive or lambdas is None or selection != "refit" or clip:
+        if approx:
+            raise ValueError(
+                "approx=True is only available with the original CV (inductive=False, "
+                "fixed grid, selection='refit', clip=False).")
+        lams = [] if lambdas is None else np.asarray(lambdas, dtype=np.float64).tolist()
+        res = hapc_core.fasthal_cv_general_fit(
+            X, Y, int(npcs), lams, int(nlambda), int(nfolds), Xte,
+            int(max_degree), bool(center), bool(l1), bool(inductive),
+            str(selection), float(train_frac), bool(clip),
+        )
+        return CVResult(
+            mses=np.asarray(res.mses),
+            lambdas=np.asarray(res.lambdas),
+            best_lambda=float(res.best_lambda),
+            best_model_alpha=np.asarray(res.best_alpha),
+            predictions=(np.asarray(res.predictions)
+                         if predict is not None else None),
+            best_index=int(res.best_index),
+            intercept=float(res.intercept),
+            fold_mses=np.asarray(res.fold_mses),
+            cv_predictions=np.asarray(res.cv_predictions),
+            foldid=np.asarray(res.foldid),
+            fold_alphas=[np.asarray(a) for a in res.fold_alphas],
+            fold_intercepts=np.asarray(res.fold_intercepts),
+            fold_ranks=np.asarray(res.fold_ranks),
+            rank=int(res.rank),
+            lambda_grid=str(res.grid),
+            selection=selection,
+            inductive=bool(inductive),
+            clip=bool(clip),
+        )
+
+    lams = np.asarray(lambdas, dtype=np.float64)
     res = hapc_core.fasthal_cv_fit(
         X, Y, int(npcs), lams.tolist(), int(nfolds),
         Xte, int(max_degree),
@@ -276,7 +337,8 @@ def pcghal_cv_classi(X: np.ndarray, Y: np.ndarray,
                      verbose: bool = False,
                      max_iter: int = 5000, tol: float = 1e-3,
                      step_factor: float = 0.8,
-                     with_pgd: bool = True) -> CVResult:
+                     with_pgd: bool = True,
+                     inductive: bool = False) -> CVResult:
     """k-fold logistic-loss CV for binomial HAPC.
 
     Calls the shared C++ logistic CV used by R's ``cv.hapc(family="binomial")``.
@@ -291,6 +353,10 @@ def pcghal_cv_classi(X: np.ndarray, Y: np.ndarray,
         ``True`` → ``norm="sv"`` (logistic ridge initialiser + projected
         gradient descent on logistic loss, per fold). ``False`` → ``norm="2"``
         (logistic ridge only, no PGD), still scored with logistic deviance.
+    inductive : bool, default False
+        Build the design (knots, centring, PCs) of every training fold from its
+        own rows and score held-out rows through the cross-kernel. ``False``
+        keeps the original full-sample design.
     max_degree, npcs, lambdas, log_lambda_min, log_lambda_max, grid_length,\
         nfolds, predict, center, verbose, max_iter, tol, step_factor :
         See :func:`cv_hapc`.
@@ -318,7 +384,7 @@ def pcghal_cv_classi(X: np.ndarray, Y: np.ndarray,
     res = hapc_core.pcghal_cv_classi_fit(
         X, Y, int(max_degree), int(npcs), lams.tolist(), int(nfolds),
         Xte, int(max_iter), float(tol), float(step_factor),
-        bool(verbose), bool(center), bool(with_pgd),
+        bool(verbose), bool(center), bool(with_pgd), bool(inductive),
     )
 
     predictions = (np.asarray(res.predictions)
@@ -508,7 +574,7 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
             npcs: Optional[int] = None,
             log_lambda_min: float = -5,
             log_lambda_max: float = -3,
-            grid_length: int = 10,
+            grid_length: Optional[int] = None,
             nfolds: int = 5,
             norm: str = "sv",
             predict: Optional[np.ndarray] = None,
@@ -523,7 +589,13 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
             Delta: Optional[np.ndarray] = None,
             time_grid: Optional[np.ndarray] = None,
             intercept: Optional[bool] = None,
-            extend_grid: int = 0) -> CVResult:
+            extend_grid: int = 0,
+            inductive: bool = False,
+            lambdas: Optional[np.ndarray] = None,
+            lambda_grid: str = "fixed",
+            selection: str = "refit",
+            train_frac: float = 0.8,
+            clip: bool = False) -> CVResult:
     """k-fold cross-validated HAPC fit (Python counterpart of R ``cv.hapc()``).
 
     Parameters
@@ -561,15 +633,59 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
         another ``grid_length`` points) up to ``extend_grid`` times; upwards
         never past ``lambda_max`` (the intercept-only fit). Mirrors R.
     max_degree : int, default 1
-        Maximum interaction order.
+        Maximum interaction order. The default 1 (same as R ``cv.hapc``)
+        keeps main effects only, i.e. an additive model when ``p >= 2``. The
+        full HAL dictionary analysed by the PC-HAR/PC-HAL theory is
+        ``max_degree = p``.
     npcs : int, optional
         Number of PCs. Defaults to ``n``.
     log_lambda_min, log_lambda_max : float
-        Bounds of the log-λ grid (defaults ``-5``, ``-3``).
-    grid_length : int, default 10
-        Number of grid points.
+        Bounds of the log-λ grid (defaults ``-5``, ``-3``), used with
+        ``lambda_grid="fixed"`` and ``lambdas=None``.
+    grid_length : int, optional
+        Number of grid points: 10 for ``lambda_grid="fixed"``, 40 for
+        ``"scaled"`` when not given.
     nfolds : int, default 5
-        Number of CV folds. Identical fold partitions to R.
+        Number of CV folds. Identical fold partitions to R. Ignored with
+        ``selection="holdout"``.
+    inductive : bool, default False
+        If ``True``, the HAL kernel, its centring and its PCs are built from
+        the training rows of each fold only, and held-out rows are scored
+        through the cross-kernel with the training knots and centring; the
+        fold fits are then the exact penalised least-squares minimisers on the
+        training fold. ``False`` (original behaviour) uses one basis built from
+        all rows, so held-out covariates enter the basis and the closed-form
+        fold fits are not the exact training-fold minimisers. Implemented for
+        gaussian ``norm`` in ``{"1","2"}`` and binomial ``norm`` in
+        ``{"sv","2"}``; binomial ``norm="1"`` is always inductive; not yet
+        available for gaussian ``norm="sv"``.
+    lambdas : np.ndarray, optional
+        Explicit λ grid; takes precedence over ``log_lambda_*`` and
+        ``grid_length``. Cannot be combined with ``lambda_grid="scaled"``.
+    lambda_grid : {"fixed", "scaled"}, default "fixed"
+        ``"fixed"``: ``exp(linspace(log_lambda_min, log_lambda_max,
+        grid_length))``, the same for every n. ``"scaled"`` (gaussian
+        ``norm`` in ``{"1","2"}``): ``grid_length`` log-spaced values scaled to
+        the data, ``(s_1^2/n) * 10**[-9, 1]`` for ``norm="2"`` and
+        ``[1e-5, 1] * lambda_max`` with ``lambda_max = max_j s_j |u_j' y_c| / n``
+        for ``norm="1"``, computed on the basis that is fitted (largest value
+        over the training folds when ``inductive=True``, full sample
+        otherwise).
+    selection : {"refit", "fold_average", "holdout"}, default "refit"
+        Gaussian ``norm`` in ``{"1","2"}``. ``"refit"`` (original) returns the
+        full-sample fit at the selected λ; ``"fold_average"`` averages the
+        predictions of the fold fits, without refit; ``"holdout"`` uses one
+        split (``train_frac`` for training) and returns the training-part fit.
+        Only ``"holdout"`` with ``inductive=True`` (and ``clip=True``) is the
+        procedure covered by the hold-out selection theory for PC-HAR/PC-HAL;
+        the full-sample refit is not covered, because its norm radius is not
+        the one that was validated.
+    train_frac : float, default 0.8
+        Training fraction for ``selection="holdout"`` (``std::mt19937(12345)``
+        shuffle, shared with R).
+    clip : bool, default False
+        Gaussian ``norm`` in ``{"1","2"}``: clip held-out and returned
+        predictions to the training-outcome range of the fit that produced them.
     norm : {"sv", "1", "2"}, default "sv"
         Norm constraint. See :func:`hapc.single.hapc`.
     predict : np.ndarray, optional
@@ -600,6 +716,12 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
     # event indicator Delta must be supplied. norm = "sv" is flagged inside
     # hazard_hapc. See hapc.hazard_hapc.
     if family == "logit-hazard":
+        if (inductive or lambdas is not None or lambda_grid != "fixed"
+                or selection != "refit" or clip):
+            raise ValueError("inductive, lambdas, lambda_grid, selection and clip are "
+                             "not available for family='logit-hazard'.")
+        if grid_length is None:
+            grid_length = 10
         if Delta is None:
             raise ValueError(
                 "family='logit-hazard' requires 'Delta' (event indicator); pass "
@@ -621,8 +743,22 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
         )
     if npcs is None:
         npcs = int(X.shape[0])
+    if lambda_grid not in {"fixed", "scaled"}:
+        raise ValueError(f"lambda_grid must be 'fixed' or 'scaled'; got '{lambda_grid}'")
+    if lambdas is not None and lambda_grid == "scaled":
+        raise ValueError("give either 'lambdas' or lambda_grid='scaled', not both.")
+    if grid_length is None:
+        grid_length = 40 if lambda_grid == "scaled" else 10
+    euclid = family == "gaussian" and norm in {"1", "2"}
+    if not euclid and (lambda_grid == "scaled" or selection != "refit" or clip):
+        raise ValueError("lambda_grid='scaled', selection and clip are implemented for "
+                         "family='gaussian' with norm='1' or '2' only.")
+    if family == "gaussian" and norm == "sv" and inductive:
+        raise ValueError("inductive=True is not yet implemented for family='gaussian', "
+                         "norm='sv'.")
 
-    lams = _grid(None, log_lambda_min, log_lambda_max, grid_length)
+    lams = (None if lambda_grid == "scaled"
+            else _grid(lambdas, log_lambda_min, log_lambda_max, grid_length))
 
     if family == "binomial":
         # Validate labels; allow soft labels in [0,1] only for norm in {"1","2"}.
@@ -633,7 +769,7 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
                 lambdas=lams, nfolds=nfolds, predict=predict,
                 center=center, verbose=verbose,
                 max_iter=max_iter, tol=tol, step_factor=step_factor,
-                with_pgd=(norm == "sv"),
+                with_pgd=(norm == "sv"), inductive=bool(inductive),
             )
         if norm == "1":
             return pcghal_cv_classi_lasso(
@@ -658,6 +794,8 @@ def cv_hapc(X: np.ndarray, Y: np.ndarray,
             X, Y, npcs=npcs, lambdas=lams, nfolds=nfolds,
             predict=predict, max_degree=max_degree,
             center=center, approx=approx, l1=(norm == "1"),
+            inductive=bool(inductive), selection=selection,
+            train_frac=train_frac, clip=bool(clip), nlambda=int(grid_length),
         )
     raise ValueError(f"norm must be one of {{'sv','1','2'}}; got '{norm}'")
 

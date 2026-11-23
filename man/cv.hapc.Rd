@@ -27,7 +27,13 @@ cv.hapc(
   Delta = NULL,
   time_grid = NULL,
   intercept = NULL,
-  extend_grid = 0L
+  extend_grid = 0L,
+  inductive = FALSE,
+  lambdas = NULL,
+  lambda_grid = c("fixed", "scaled"),
+  selection = c("refit", "fold_average", "holdout"),
+  train_frac = 0.8,
+  clip = FALSE
 )
 }
 \arguments{
@@ -45,21 +51,28 @@ model: the second argument \code{Y} is then the observed time
 \eqn{T = \min(T^{event}, C)} and \code{Delta} (event indicator) must be
 supplied; the call is forwarded to \code{\link{hazard.hapc}}.}
 
-\item{max_degree}{Integer; maximum interaction order for the HAL basis.
-Default \code{1L} (additive HAL).}
+\item{max_degree}{Integer; maximum interaction order of the HAL dictionary.
+The default \code{1L} (same in Python \code{cv_hapc()}) keeps main effects
+only, i.e. an additive model when \code{ncol(X) >= 2}. The full HAL
+dictionary analysed by the PC-HAR/PC-HAL theory is
+\code{max_degree = ncol(X)}.}
 
 \item{npcs}{Integer; number of principal components to keep. Default
 \code{nrow(X)}.}
 
 \item{log_lambda_min}{Numeric; lower bound of the log-lambda grid. Default
-\code{-5}.}
+\code{-5}. Used only with \code{lambda_grid = "fixed"} and
+\code{lambdas = NULL}.}
 
 \item{log_lambda_max}{Numeric; upper bound of the log-lambda grid. Default
-\code{-3}.}
+\code{-3}. Used as \code{log_lambda_min}.}
 
-\item{grid_length}{Integer; number of grid points. Default \code{10L}.}
+\item{grid_length}{Integer; number of grid points. Default \code{10L} for
+\code{lambda_grid = "fixed"} and \code{40L} for
+\code{lambda_grid = "scaled"}.}
 
-\item{nfolds}{Integer; number of CV folds. Default \code{5L}.}
+\item{nfolds}{Integer; number of CV folds. Default \code{5L}. Ignored with
+\code{selection = "holdout"}.}
 
 \item{norm}{Character: \code{"sv"}, \code{"1"} or \code{"2"}. Default
 \code{"sv"}. For \code{family = "binomial"} all three are supported and
@@ -126,9 +139,60 @@ at \code{lambda_max} (the smallest lambda giving the intercept-only fit);
 for \code{norm \%in\% c("sv", "2")} the CV is rerun on the extended grid.
 Default \code{0L} (no extension). A warning is issued if the optimum is
 still on an edge after the extensions. R-only option.}
+
+\item{inductive}{Logical. If \code{TRUE}, the HAL kernel, its centring
+and its PCs are built from the training rows of each fold only, and the
+held-out rows are scored through the cross-kernel with the training knots
+and centring. The fold fits are then the exact penalised least-squares
+minimisers on the training fold. If \code{FALSE} (default, original
+behaviour) one basis is built from all rows of \code{X} and the fold fits
+use its training rows; held-out covariates then enter the basis and the
+closed-form fold fits are not the exact training-fold minimisers.
+Implemented for \code{family = "gaussian"}, \code{norm \%in\% c("1","2")}
+and \code{family = "binomial"}, \code{norm \%in\% c("sv","2")}; the
+binomial \code{norm = "1"} path is always inductive. Not yet available
+for gaussian \code{norm = "sv"}.}
+
+\item{lambdas}{Optional numeric vector: the lambda grid to search. Takes
+precedence over \code{log_lambda_min}, \code{log_lambda_max} and
+\code{grid_length}; cannot be combined with \code{lambda_grid = "scaled"}.}
+
+\item{lambda_grid}{\code{"fixed"} (default): \code{exp(seq(log_lambda_min,
+log_lambda_max, length.out = grid_length))}, the same for every \eqn{n}.
+\code{"scaled"} (gaussian, \code{norm \%in\% c("1","2")}): a grid scaled
+to the data, \code{grid_length} log-spaced values (default 40). For
+\code{norm = "2"} (PC-HAR) it is \eqn{(s_1^2/n)\,10^{[-9,1]}}; for
+\code{norm = "1"} (PC-HAL) it runs from \eqn{10^{-5}\lambda_{\max}} to
+\eqn{\lambda_{\max} = \max_j s_j|u_j^\top y_c|/n} (the smallest lambda
+that sets every coefficient to zero). Here \eqn{s_j}, \eqn{u_j} and
+\eqn{n} belong to the basis the folds are fitted on: the largest value
+over the training folds when \code{inductive = TRUE}, the full sample
+otherwise.}
+
+\item{selection}{Gaussian, \code{norm \%in\% c("1","2")}. What is returned
+at the selected lambda: \code{"refit"} (default, original behaviour) the
+fit on all data; \code{"fold_average"} no refit, predictions are the
+average of the \code{nfolds} fold fits (each in its own basis);
+\code{"holdout"} a single split (\code{train_frac} of the rows for
+training, the rest for validation), lambda chosen on the validation part,
+and the training-part fit is returned. Only \code{"holdout"} with
+\code{inductive = TRUE} (and \code{clip = TRUE}) is the procedure covered
+by the hold-out selection theory for PC-HAR/PC-HAL; the full-sample refit
+is not covered, because the refit's norm radius is not the one that was
+validated.}
+
+\item{train_frac}{Training fraction for \code{selection = "holdout"}.
+Default \code{0.8}. The split is a shuffle with \code{std::mt19937(12345)}.}
+
+\item{clip}{Logical. Gaussian, \code{norm \%in\% c("1","2")}: clip every
+prediction (held-out scoring and returned predictions) to the range of the
+training outcomes of the fit that produced it. Default \code{FALSE}.}
 }
 \value{
-A list with elements \code{mses} / \code{deviances} (binomial),
+With the original gaussian \code{norm \%in\% c("1","2")} CV
+  (\code{inductive = FALSE}, \code{lambda_grid = "fixed"},
+  \code{selection = "refit"}, \code{clip = FALSE}) and for the other
+  families and norms: a list with elements \code{mses} / \code{deviances} (binomial),
   \code{lambdas}, \code{best_lambda}, \code{res_opt} (refit on full data),
   and \code{predictions} when \code{predict} is non-NULL. For
   \code{family = "binomial"}, \code{norm = "1"} also \code{best_index},
@@ -139,6 +203,19 @@ A list with elements \code{mses} / \code{deviances} (binomial),
   \code{family = "binomial"}, \code{norm \%in\% c("sv", "2")} and
   \code{extend_grid > 0}, also \code{best_index}, \code{lambda_position}
   and \code{n_extend}.
+
+  Otherwise (gaussian, \code{norm \%in\% c("1","2")}) the list also has
+  \code{best_index}; \code{fold_mses} (folds x lambdas; one row for
+  hold-out); \code{cv_predictions} (n x lambdas held-out predictions,
+  \code{NA} for training rows of a hold-out split); \code{foldid} (fold of
+  each row; for hold-out 0 = training, 1 = validation); \code{fold_alphas}
+  (per fold, PCs x lambdas, in that fold's basis); \code{fold_intercepts}
+  and \code{fold_ranks}; \code{intercept} and \code{rank} of the returned
+  fit; \code{lambda_grid} (\code{"user"} or \code{"scaled"});
+  \code{selection}, \code{inductive} and \code{clip}. \code{res_opt} is the
+  coefficient vector of the full-sample refit (\code{"refit"}) or of the
+  training-part fit (\code{"holdout"}), and \code{NULL} for
+  \code{"fold_average"}.
 }
 \description{
 k-fold cross-validation over a log-spaced grid of \code{lambda} values for
