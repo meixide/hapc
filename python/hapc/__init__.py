@@ -23,7 +23,7 @@ Lower-level building blocks:
   with ``method="undersmooth"`` (default) or ``method="crossfit"`` (DML-style).
 """
 
-__version__ = "2.7.1"
+__version__ = "2.8.0"
 
 from .core import (
     DesignOutput,

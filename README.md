@@ -2,6 +2,21 @@
 
 A fast and flexible machine learning library for nonparametric high-dimensional regression and classification with guarantees.
 
+## ⚠️ Default changes in 2.8.0 (may change results)
+
+Calls that rely on the defaults of `cv.hapc()` / `cv_hapc()` and the other entry points can give different results from 2.7.1. R and Python behave identically. Details in [NEWS.md](NEWS.md).
+
+| What | ≤ 2.7.1 | 2.8.0 |
+|---|---|---|
+| `max_degree` (every entry point) | 1 (main effects only), except `cv.hapc.treat()` and `hapc.ate.tmle()` | **2** (main effects and two-way interactions); values above `ncol(X)` act as `ncol(X)` |
+| CV basis, gaussian `norm = "1"/"2"` and binomial `norm = "sv"/"2"` | one basis from all of `X`, so held-out covariates enter the knots, centring and PCs | **`inductive = TRUE`**: kernel, centring and PCs from the training rows of each fold; fold fits are the exact training-fold minimisers |
+| λ grid, gaussian `norm = "1"/"2"` | fixed `exp([-5, -3])`, not scaled with `n` | **`lambda_grid = "scaled"`**, 40 points scaled by the spectrum (PC-HAR) or `lambda_max` (PC-HAL), unless you give `lambdas` or log-lambda bounds |
+| New arguments | — | `lambdas`, `selection = "refit" / "fold_average" / "holdout"`, `clip`; `selection = "refit"` and `clip = FALSE` stay the defaults |
+| `cv.hapc.treat()` (R) | internal | exported: binomial HAPC with unpenalised treatment columns |
+| `norm = "sv"` fit | multiplicative equality-constrained fit | convex ball `‖Vα‖₁ ≤ C` with a primal-dual gap certificate |
+
+Gaussian `norm = "sv"`, `approx = TRUE` and `family = "logit-hazard"` keep the previous transductive CV. To get the 2.7.1 CV defaults back, pass `inductive = FALSE`, `lambda_grid = "fixed"` and `max_degree = 1` (the `norm = "sv"` fit itself has changed).
+
 ## ⚠️ Breaking changes in 2.7.0 (read first — humans and coding agents)
 
 Code written for hapc ≤ 2.6.0 that uses `family = "binomial"` must be checked. R and Python behave identically.

@@ -1,4 +1,4 @@
-# Development version
+# hapc 2.8.0
 
 - **Default changes (may change results).** In `cv.hapc()` / `cv_hapc()`:
   - `inductive = TRUE` where it is implemented: gaussian `norm = "1"/"2"` and binomial `norm = "sv"/"2"`.
@@ -24,7 +24,7 @@
 - `max_degree` is documented: 1 is main effects only (an additive model when `ncol(X) >= 2`); the full HAL dictionary is `max_degree = ncol(X)`.
 - Tests: `tests/test_inductive_cv.py`, `tests/r/test_inductive_cv.R` (run from pytest by `tests/test_r_inductive_cv.py`): fold fits that do not depend on held-out covariates, exact fold minimisers against the explicit training-only dictionary, bit-identical reproduction of the previous CV with `inductive = FALSE`, grid, hold-out, fold averaging, clipping, binomial ridge against a training-only design.
 
-- New exported `cv.hapc.treat()` (R only): binomial HAPC with treatment columns outside the HAL kernel and unpenalised (`penalty_factor = 0`, with automatic retries under separation), optional unpenalised standardised linear covariates, the `cv.hapc` folds and edge-extended lambda grid up to `lambda_max`. It is the engine of `learner_hapc_trat` in the `tmle2t` package, which previously reached into hapc internals; on the same inputs it returns bit-identical predictions. Tests: `tests/r/test_cv_hapc_treat.R` (without A it reproduces `cv.hapc(norm = "1")`). R package version 2.7.1.9000.
+- New exported `cv.hapc.treat()` (R only): binomial HAPC with treatment columns outside the HAL kernel and unpenalised (`penalty_factor = 0`, with automatic retries under separation), optional unpenalised standardised linear covariates, the `cv.hapc` folds and edge-extended lambda grid up to `lambda_max`. It is the engine of `learner_hapc_trat` in the `tmle2t` package, which previously reached into hapc internals; on the same inputs it returns bit-identical predictions. Tests: `tests/r/test_cv_hapc_treat.R` (without A it reproduces `cv.hapc(norm = "1")`).
 
 - `norm="sv"` now fits the convex coefficient-SV ball `||V alpha||1 <= C`, with C still determined by the initial fit at lambda. Interior optima and activation of zero PC coefficients are allowed. This replaces the multiplicative equality-constrained fit and may change results.
 - A numerical primal-dual gap controls convergence. Single and CV outputs expose optimisation diagnostics; iteration-limited outputs remain explicitly uncertified. `tol` is a scaled gap tolerance. `crit` and `step_factor` remain accepted for call compatibility; both crit values use the gap and step_factor is ignored by the ball solver.
